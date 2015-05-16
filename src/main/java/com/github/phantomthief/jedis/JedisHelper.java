@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,11 +19,10 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.BaseStream;
 import java.util.stream.Stream;
 
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Iterators;
+import com.google.common.collect.Maps;
 
 import redis.clients.jedis.BinaryJedis;
 import redis.clients.jedis.BinaryJedisCommands;
@@ -52,6 +50,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
     private final Supplier<Object> poolFactory;
     private final BiConsumer<Object, Throwable> exceptionHandler;
+    private final int pipelinePartitonSize;
 
     private final Class<?> jedisType;
     private final Class<?> binaryJedisType;
@@ -59,84 +58,24 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     /**
      * @param poolFactory
      * @param exceptionHandler
+     * @param pipelinePartitonSize
      * @param jedisType
      * @param binaryJedisType
      */
     private JedisHelper(Supplier<Object> poolFactory, //
             BiConsumer<Object, Throwable> exceptionHandler, //
+            int pipelinePartitonSize, //
             Class<?> jedisType, //
             Class<?> binaryJedisType) {
         this.poolFactory = poolFactory;
         this.exceptionHandler = exceptionHandler;
+        this.pipelinePartitonSize = pipelinePartitonSize;
         this.jedisType = jedisType;
         this.binaryJedisType = binaryJedisType;
     }
 
-    public <K, V, E extends BaseStream<K, E>> Map<K, V> pipeline(E keys,
-            BiFunction<P, K, Response<V>> function) {
-        Map<K, V> result = new HashMap<>();
-        if (keys != null) {
-            Iterator<List<K>> partition = Iterators.partition(keys.iterator(), PARTITION_SIZE);
-            for (Iterator<List<K>> iterator = partition; iterator.hasNext();) {
-                List<K> list = iterator.next();
-
-                Object pool = poolFactory.get();
-                try (J jedis = getJedis(pool)) {
-                    P pipeline = pipeline(jedis);
-                    Map<K, Response<V>> thisMap = new HashMap<>(list.size());
-                    for (K key : list) {
-                        Response<V> apply = function.apply(pipeline, key);
-                        thisMap.put(key, apply);
-                    }
-                    syncPipeline(pipeline);
-                    for (Entry<K, Response<V>> entry : thisMap.entrySet()) {
-                        if (entry.getValue() != null) {
-                            result.put(entry.getKey(), entry.getValue().get());
-                        }
-                    }
-                } catch (Throwable e) {
-                    exceptionHandler.accept(pool, e);
-                } finally {
-
-                }
-            }
-        }
-        return result;
-    }
-
     public <K, V> Map<K, V> pipeline(Iterable<K> keys, BiFunction<P, K, Response<V>> function) {
-        int size;
-        if (keys != null && keys instanceof Collection) {
-            size = ((Collection<K>) keys).size();
-        } else {
-            size = 16;
-        }
-        Map<K, V> result = new HashMap<>(size);
-        if (keys != null) {
-            Iterable<List<K>> partition = Iterables.partition(keys, PARTITION_SIZE);
-            for (List<K> list : partition) {
-                Object pool = poolFactory.get();
-                try (J jedis = getJedis(pool)) {
-                    P pipeline = pipeline(jedis);
-                    Map<K, Response<V>> thisMap = new HashMap<>(list.size());
-                    for (K key : list) {
-                        Response<V> apply = function.apply(pipeline, key);
-                        thisMap.put(key, apply);
-                    }
-                    syncPipeline(pipeline);
-                    for (Entry<K, Response<V>> entry : thisMap.entrySet()) {
-                        if (entry.getValue() != null) {
-                            result.put(entry.getKey(), entry.getValue().get());
-                        }
-                    }
-                } catch (Throwable e) {
-
-                } finally {
-
-                }
-            }
-        }
-        return result;
+        return pipeline(keys, function, Function.identity());
     }
 
     public <K, V, T> Map<K, T> pipeline(Iterable<K> keys, BiFunction<P, K, Response<V>> function,
@@ -147,12 +86,14 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         } else {
             size = 16;
         }
-        Map<K, T> result = new HashMap<>(size);
+        Map<K, T> result = Maps.newHashMapWithExpectedSize(size);
         if (keys != null) {
-            Iterable<List<K>> partition = Iterables.partition(keys, PARTITION_SIZE);
+            Iterable<List<K>> partition = Iterables.partition(keys, pipelinePartitonSize);
             for (List<K> list : partition) {
                 Object pool = poolFactory.get();
+                String jedisInfo = null;
                 try (J jedis = getJedis(pool)) {
+                    jedisInfo = getJedisInfo(jedis);
                     P pipeline = pipeline(jedis);
                     Map<K, Response<V>> thisMap = new HashMap<>(list.size());
                     for (K key : list) {
@@ -166,9 +107,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                         }
                     }
                 } catch (Throwable e) {
-
-                } finally {
-
+                    exceptionHandler.accept(pool, e);
+                    logger.error("fail to exec jedis pipeline command, pool:{}", jedisInfo, e);
                 }
             }
         }
@@ -195,15 +135,12 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             String jedisInfo = null;
             Object pool = poolFactory.get();
             try (J jedis = getJedis(pool)) {
-                if (jedis instanceof Jedis) {
-                    jedisInfo = ((Jedis) jedis).getClient().getHost() + ":"
-                            + ((Jedis) jedis).getClient().getPort();
-                }
+                jedisInfo = getJedisInfo(jedis);
                 Object invoke = method.invoke(jedis, args);
                 return invoke;
             } catch (Throwable e) {
                 exceptionHandler.accept(pool, e);
-                logger.error("fail to exec jedis command, pool:{}", jedisInfo, e);
+                logger.error("fail to exec jedis command, pool:{}, cmd:{}", jedisInfo, method, e);
                 throw e;
             }
         }
@@ -215,6 +152,14 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         } else if (pipeline instanceof ShardedJedisPipeline) {
             ((ShardedJedisPipeline) pipeline).sync();
         }
+    }
+
+    private String getJedisInfo(Object obj) {
+        if (obj instanceof Jedis) {
+            Jedis jedis = (Jedis) obj;
+            return jedis.getClient().getHost() + ":" + jedis.getClient().getPort();
+        }
+        return null;
     }
 
     private J getJedis(Object pool) {
@@ -315,35 +260,50 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return result.stream();
     }
 
-    public static final class Builder<P extends PipelineBase, J extends Closeable> {
+    public static final class Builder<P extends PipelineBase, J extends Closeable, O> {
 
         private Supplier<Object> poolFactory;
-        private BiConsumer<Object, Throwable> exceptionHandler;
+        private BiConsumer<O, Throwable> exceptionHandler;
+        private int pipelinePartitonSize;
 
         private Class<?> jedisType;
         private Class<?> binaryJedisType;
 
-        public Builder<P, J> withExceptionHandler(BiConsumer<Object, Throwable> exceptionHandler) {
+        public Builder<P, J, O> withExceptionHandler(BiConsumer<O, Throwable> exceptionHandler) {
             this.exceptionHandler = exceptionHandler;
             return this;
         }
 
+        public Builder<P, J, O> withPipelinePartitionSize(int size) {
+            this.pipelinePartitonSize = size;
+            return this;
+        }
+
         public JedisHelper<P, J> build() {
-            return new JedisHelper<>(poolFactory, exceptionHandler, jedisType, binaryJedisType);
+            ensure();
+            return new JedisHelper<>(poolFactory, (BiConsumer<Object, Throwable>) exceptionHandler,
+                    pipelinePartitonSize, jedisType, binaryJedisType);
+        }
+
+        private void ensure() {
+            if (pipelinePartitonSize <= 0) {
+                pipelinePartitonSize = PARTITION_SIZE;
+            }
         }
     }
 
-    public static final Builder<ShardedJedisPipeline, ShardedJedis> newShardedBuilder(
+    public static final Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool> newShardedBuilder(
             Supplier<ShardedJedisPool> poolFactory) {
-        Builder<ShardedJedisPipeline, ShardedJedis> builder = new Builder<>();
+        Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool> builder = new Builder<>();
         builder.poolFactory = (Supplier) poolFactory;
         builder.jedisType = ShardedJedis.class;
         builder.binaryJedisType = BinaryShardedJedis.class;
         return builder;
     }
 
-    public static final Builder<Pipeline, Jedis> newBuilder(Supplier<JedisPool> poolFactory) {
-        Builder<Pipeline, Jedis> builder = new Builder<>();
+    public static final Builder<Pipeline, Jedis, JedisPool> newBuilder(
+            Supplier<JedisPool> poolFactory) {
+        Builder<Pipeline, Jedis, JedisPool> builder = new Builder<>();
         builder.poolFactory = (Supplier) poolFactory;
         builder.jedisType = Jedis.class;
         builder.binaryJedisType = BinaryJedis.class;
