@@ -175,12 +175,12 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return result;
     }
 
-    public JedisCommands getCommands() {
+    public JedisCommands get() {
         return (JedisCommands) Proxy.newProxyInstance(jedisType.getClassLoader(),
                 jedisType.getInterfaces(), new PoolableJedisCommands());
     }
 
-    public BinaryJedisCommands getBinaryCommands() {
+    public BinaryJedisCommands getBinary() {
         return (BinaryJedisCommands) Proxy.newProxyInstance(binaryJedisType.getClassLoader(),
                 binaryJedisType.getInterfaces(), new PoolableJedisCommands());
     }
@@ -261,7 +261,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
     public long getShardBitCount(String keyPrefix, int keyHashRange, long start, long end) {
         return generateKeys(keyPrefix, keyHashRange, start, end).values().stream()
-                .mapToLong(getCommands()::bitcount).sum();
+                .mapToLong(get()::bitcount).sum();
     }
 
     public boolean setShardBit(long bit, String keyPrefix, int keyHashRange) {
@@ -285,7 +285,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
     public void delShardBit(String keyPrefix, int keyHashRange, long start, long end) {
         Map<Long, String> allKeys = generateKeys(keyPrefix, keyHashRange, start, end);
-        allKeys.values().stream().forEach(getCommands()::del);
+        allKeys.values().stream().forEach(get()::del);
     }
 
     public Stream<Long> iterateShardBit(String keyPrefix, int keyHashRange, long start, long end) {
@@ -303,7 +303,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     private Stream<Long> mapToLong(Entry<Long, String> entry) {
-        byte[] bytes = getBinaryCommands().get(entry.getValue().getBytes());
+        byte[] bytes = getBinary().get(entry.getValue().getBytes());
         List<Long> result = new ArrayList<>();
         if (bytes != null && bytes.length > 0) {
             for (int i = 0; i < (bytes.length * 8); i++) {
