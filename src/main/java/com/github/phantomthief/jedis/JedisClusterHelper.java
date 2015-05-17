@@ -7,18 +7,11 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-import com.google.common.util.concurrent.ListeningExecutorService;
-import com.google.common.util.concurrent.MoreExecutors;
+import com.github.phantomthief.concurrent.AdaptiveExecutor;
 
 import redis.clients.jedis.JedisCluster;
 
@@ -27,25 +20,17 @@ import redis.clients.jedis.JedisCluster;
  */
 public class JedisClusterHelper {
 
-    private static CallerRunsPolicy callerRunsPolicy = new CallerRunsPolicy();
-
     private final Supplier<JedisCluster> clusterFactory;
-
-    private final int globalMaxThread;
-    private final int maxThreadPerRequest;
-
-    private final AtomicInteger threadCounter = new AtomicInteger();
+    private final AdaptiveExecutor adaptiveExecutor;
 
     /**
      * @param clusterFactory
-     * @param globalMaxThread
-     * @param maxThreadPerRequest
+     * @param adaptiveExecutor
      */
-    private JedisClusterHelper(Supplier<JedisCluster> clusterFactory, int globalMaxThread,
-            int maxThreadPerRequest) {
+    private JedisClusterHelper(Supplier<JedisCluster> clusterFactory,
+            AdaptiveExecutor adaptiveExecutor) {
         this.clusterFactory = clusterFactory;
-        this.globalMaxThread = globalMaxThread;
-        this.maxThreadPerRequest = maxThreadPerRequest;
+        this.adaptiveExecutor = adaptiveExecutor;
     }
 
     public <K, V> Map<K, V> pipeline(Collection<K> keys, BiFunction<JedisCluster, K, V> func) {
@@ -55,71 +40,34 @@ public class JedisClusterHelper {
     public <K, T, V> Map<K, V> pipeline(Collection<K> keys, BiFunction<JedisCluster, K, T> func,
             Function<T, V> codec) {
         ConcurrentMap<K, V> result = new ConcurrentHashMap<>();
-        ExecutorService executorService = newExecutor(keys.size());
-        for (K key : keys) {
-            executorService.execute(
-                    () -> result.put(key, codec.apply(func.apply(clusterFactory.get(), key))));
-        }
-        if (MoreExecutors.shutdownAndAwaitTermination(executorService, 1, TimeUnit.MINUTES)) {
-            decrCounter(executorService);
-        }
+        adaptiveExecutor.invokeAll(keys,
+                key -> result.put(key, codec.apply(func.apply(clusterFactory.get(), key))));
         return result;
-    }
-
-    private final int leftThreadCount(int old, int need) {
-        if (old >= globalMaxThread) {
-            return 0;
-        }
-        return Math.min(globalMaxThread - old, need);
-    }
-
-    private final void decrCounter(ExecutorService executorService) {
-        if (executorService instanceof ListeningExecutorService) {
-            return;
-        }
-        if (executorService instanceof ThreadPoolExecutor) {
-            ThreadPoolExecutor threadPoolExecutor = (ThreadPoolExecutor) executorService;
-            threadCounter.addAndGet(-threadPoolExecutor.getCorePoolSize());
-        }
-    }
-
-    private ExecutorService newExecutor(int keySize) {
-        int needThread = Math.min(maxThreadPerRequest, keySize / maxThreadPerRequest);
-        if (needThread <= 1) {
-            return MoreExecutors.newDirectExecutorService();
-        }
-        int leftThread = threadCounter.updateAndGet(old -> leftThreadCount(old, needThread));
-        if (leftThread <= 0) {
-            return MoreExecutors.newDirectExecutorService();
-        } else {
-            ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(leftThread, leftThread,
-                    0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>(1));
-            threadPoolExecutor.setRejectedExecutionHandler(callerRunsPolicy);
-            return threadPoolExecutor;
-        }
     }
 
     public static final class Builder {
 
-        private int globalMaxThread;
-        private int maxThreadPerRequest;
+        private AdaptiveExecutor executor;
 
-        public Builder withGlobalMaxThread(int globalMaxThread) {
-            this.globalMaxThread = globalMaxThread;
-            return this;
-        }
-
-        public Builder withMaxThreadPerRequest(int maxThreadPerRequest) {
-            this.maxThreadPerRequest = maxThreadPerRequest;
+        public Builder withExecutor(AdaptiveExecutor executor) {
+            this.executor = executor;
             return this;
         }
 
         public JedisClusterHelper build(JedisCluster cluster) {
-            return new JedisClusterHelper(() -> cluster, globalMaxThread, maxThreadPerRequest);
+            ensuer();
+            return new JedisClusterHelper(() -> cluster, executor);
         }
 
         public JedisClusterHelper build(Supplier<JedisCluster> clusterFactory) {
-            return new JedisClusterHelper(clusterFactory, globalMaxThread, maxThreadPerRequest);
+            ensuer();
+            return new JedisClusterHelper(clusterFactory, executor);
+        }
+
+        private void ensuer() {
+            if (executor == null) {
+                throw new NullPointerException("executor is null.");
+            }
         }
     }
 
