@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -28,7 +29,7 @@ public class JedisClusterHelper {
 
     private static CallerRunsPolicy callerRunsPolicy = new CallerRunsPolicy();
 
-    private final JedisCluster cluster;
+    private final Supplier<JedisCluster> clusterFactory;
 
     private final int globalMaxThread;
     private final int maxThreadPerRequest;
@@ -36,12 +37,13 @@ public class JedisClusterHelper {
     private final AtomicInteger threadCounter = new AtomicInteger();
 
     /**
-     * @param cluster
+     * @param clusterFactory
      * @param globalMaxThread
      * @param maxThreadPerRequest
      */
-    private JedisClusterHelper(JedisCluster cluster, int globalMaxThread, int maxThreadPerRequest) {
-        this.cluster = cluster;
+    private JedisClusterHelper(Supplier<JedisCluster> clusterFactory, int globalMaxThread,
+            int maxThreadPerRequest) {
+        this.clusterFactory = clusterFactory;
         this.globalMaxThread = globalMaxThread;
         this.maxThreadPerRequest = maxThreadPerRequest;
     }
@@ -55,7 +57,8 @@ public class JedisClusterHelper {
         ConcurrentMap<K, V> result = new ConcurrentHashMap<>();
         ExecutorService executorService = newExecutor(keys.size());
         for (K key : keys) {
-            executorService.execute(() -> result.put(key, codec.apply(func.apply(cluster, key))));
+            executorService.execute(
+                    () -> result.put(key, codec.apply(func.apply(clusterFactory.get(), key))));
         }
         if (MoreExecutors.shutdownAndAwaitTermination(executorService, 1, TimeUnit.MINUTES)) {
             decrCounter(executorService);
@@ -112,8 +115,15 @@ public class JedisClusterHelper {
         }
 
         public JedisClusterHelper build(JedisCluster cluster) {
-            return new JedisClusterHelper(cluster, globalMaxThread, maxThreadPerRequest);
+            return new JedisClusterHelper(() -> cluster, globalMaxThread, maxThreadPerRequest);
         }
 
+        public JedisClusterHelper build(Supplier<JedisCluster> clusterFactory) {
+            return new JedisClusterHelper(clusterFactory, globalMaxThread, maxThreadPerRequest);
+        }
+    }
+
+    public static final Builder newBuilder() {
+        return new Builder();
     }
 }
