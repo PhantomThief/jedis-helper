@@ -18,6 +18,7 @@ import java.util.Map.Entry;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -33,9 +34,11 @@ import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.Pipeline;
 import redis.clients.jedis.PipelineBase;
 import redis.clients.jedis.Response;
+import redis.clients.jedis.ScanResult;
 import redis.clients.jedis.ShardedJedis;
 import redis.clients.jedis.ShardedJedisPipeline;
 import redis.clients.jedis.ShardedJedisPool;
+import redis.clients.jedis.Tuple;
 import redis.clients.util.Pool;
 
 /**
@@ -290,6 +293,43 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 pipelinePartitonSize = PARTITION_SIZE;
             }
         }
+    }
+
+    public void zscan(String key, Predicate<Tuple> op) {
+        this.<String, Tuple> scan((j, c) -> {
+            if (j instanceof Jedis) {
+                return ((Jedis) j).zscan(key, c);
+            } else if (j instanceof ShardedJedis) {
+                return ((ShardedJedis) j).zscan(key, c);
+            } else {
+                throw new UnsupportedOperationException();
+            }
+        } , op, ScanResult::getStringCursor, "");
+    }
+
+    private <K, R> void scan(BiFunction<J, K, ScanResult<R>> scanFunction, Predicate<R> op,
+            Function<ScanResult<R>, K> cursorExtractor, K initCursor) {
+        K cursor = initCursor;
+        ScanResult<R> result = null;
+        do {
+            Object pool = poolFactory.get();
+            try (J jedis = getJedis(pool)) {
+                result = scanFunction.apply(jedis, cursor);
+                for (R r : result.getResult()) {
+                    if (op.test(r)) {
+                        return;
+                    }
+                }
+                cursor = cursorExtractor.apply(result);
+            } catch (Throwable e) {
+                exceptionHandler.accept(pool, e);
+                if (e instanceof RuntimeException) {
+                    throw (RuntimeException) e;
+                } else {
+                    throw new RuntimeException(e);
+                }
+            }
+        } while (cursor != null && !result.getResult().isEmpty());
     }
 
     public static final Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool> newShardedBuilder(
