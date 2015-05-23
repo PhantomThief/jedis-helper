@@ -27,7 +27,10 @@ Map<Integer, Map<String, String>> result1 = jedisHelper.pipeline(ids, (p, id) ->
 Map<Integer, Long> result2 = jedisHelper.pipeline(ids, (p, id) -> p.get("key2_" + id), NumberUtils::toLong);
 
 // 单次命令调用
-jedisHelper.get().get("key"); // 直接调用，不需要先从池中获得Jedis，再return回去    
+jedisHelper.get().get("key"); // 直接调用，不需要先从池中获得Jedis，再return回去
+
+// Scan调用
+Stream<Tuple> stream = jedisHelper.zscan("zsetKey");
 ```
 
 ## 高级使用

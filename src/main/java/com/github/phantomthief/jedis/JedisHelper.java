@@ -18,10 +18,10 @@ import java.util.Map.Entry;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+import com.github.phantomthief.util.CursorIteratorEx;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
 
@@ -34,6 +34,7 @@ import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.Pipeline;
 import redis.clients.jedis.PipelineBase;
 import redis.clients.jedis.Response;
+import redis.clients.jedis.ScanParams;
 import redis.clients.jedis.ScanResult;
 import redis.clients.jedis.ShardedJedis;
 import redis.clients.jedis.ShardedJedisPipeline;
@@ -295,8 +296,32 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         }
     }
 
-    public void zscan(String key, Predicate<Tuple> op) {
-        this.<String, Tuple> scan((j, c) -> {
+    public Stream<String> scan(ScanParams params) {
+        return this.<String, String> scan((j, c) -> {
+            if (j instanceof Jedis) {
+                return ((Jedis) j).scan(c, params);
+            } else if (j instanceof ShardedJedis) {
+                throw new UnsupportedOperationException();
+            } else {
+                throw new UnsupportedOperationException();
+            }
+        } , ScanResult::getStringCursor, "0").stream();
+    }
+
+    public Stream<Entry<String, String>> hscan(String key) {
+        return this.<String, Entry<String, String>> scan((j, c) -> {
+            if (j instanceof Jedis) {
+                return ((Jedis) j).hscan(key, c);
+            } else if (j instanceof ShardedJedis) {
+                return ((ShardedJedis) j).hscan(key, c);
+            } else {
+                throw new UnsupportedOperationException();
+            }
+        } , ScanResult::getStringCursor, "0").stream();
+    }
+
+    public Stream<Tuple> zscan(String key) {
+        return this.<String, Tuple> scan((j, c) -> {
             if (j instanceof Jedis) {
                 return ((Jedis) j).zscan(key, c);
             } else if (j instanceof ShardedJedis) {
@@ -304,32 +329,46 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             } else {
                 throw new UnsupportedOperationException();
             }
-        } , op, ScanResult::getStringCursor, "");
+        } , ScanResult::getStringCursor, "0").stream();
     }
 
-    private <K, R> void scan(BiFunction<J, K, ScanResult<R>> scanFunction, Predicate<R> op,
-            Function<ScanResult<R>, K> cursorExtractor, K initCursor) {
-        K cursor = initCursor;
-        ScanResult<R> result = null;
-        do {
-            Object pool = poolFactory.get();
-            try (J jedis = getJedis(pool)) {
-                result = scanFunction.apply(jedis, cursor);
-                for (R r : result.getResult()) {
-                    if (op.test(r)) {
-                        return;
-                    }
-                }
-                cursor = cursorExtractor.apply(result);
-            } catch (Throwable e) {
-                exceptionHandler.accept(pool, e);
-                if (e instanceof RuntimeException) {
-                    throw (RuntimeException) e;
-                } else {
-                    throw new RuntimeException(e);
-                }
+    public Stream<String> sscan(String key) {
+        return this.<String, String> scan((j, c) -> {
+            if (j instanceof Jedis) {
+                return ((Jedis) j).sscan(key, c);
+            } else if (j instanceof ShardedJedis) {
+                return ((ShardedJedis) j).sscan(key, c);
+            } else {
+                throw new UnsupportedOperationException();
             }
-        } while (cursor != null && !result.getResult().isEmpty());
+        } , ScanResult::getStringCursor, "0").stream();
+    }
+
+    private <K, R> CursorIteratorEx<R, K, ScanResult<R>> scan(
+            BiFunction<J, K, ScanResult<R>> scanFunction,
+            Function<ScanResult<R>, K> cursorExtractor, K initCursor) {
+        CursorIteratorEx<R, K, ScanResult<R>> cursorIteratorEx = CursorIteratorEx
+                .<R, K, ScanResult<R>> newBuilder() //
+                .withDataRetriever(cursor -> {
+                    Object pool = poolFactory.get();
+                    try (J jedis = getJedis(pool)) {
+                        ScanResult<R> result = scanFunction.apply(jedis, cursor);
+                        return result;
+                    } catch (Throwable e) {
+                        exceptionHandler.accept(pool, e);
+                        if (e instanceof RuntimeException) {
+                            throw (RuntimeException) e;
+                        } else {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                }) //
+                .withCursorExtractor(cursorExtractor) //
+                .withDataExtractor(s -> s.getResult().iterator()) //
+                .withEndChecker(s -> "0".equals(s) || s == null) //
+                .withInitCursor(initCursor) //
+                .build();
+        return cursorIteratorEx;
     }
 
     public static final Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool> newShardedBuilder(

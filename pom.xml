@@ -61,10 +61,16 @@
 
 		<dependency>
 			<groupId>com.github.phantomthief</groupId>
+			<artifactId>cursor-iterator</artifactId>
+			<version>1.0.3</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.github.phantomthief</groupId>
 			<artifactId>adaptive-executor</artifactId>
 			<version>0.1.0</version>
 		</dependency>
-		
+
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
