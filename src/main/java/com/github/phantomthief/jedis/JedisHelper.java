@@ -22,6 +22,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import com.github.phantomthief.util.CursorIteratorEx;
+import com.google.common.base.Throwables;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
 
@@ -143,6 +144,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 Object invoke = method.invoke(jedis, args);
                 return invoke;
             } catch (Throwable e) {
+                e = Throwables.getRootCause(e);
                 exceptionHandler.accept(pool, e);
                 logger.error("fail to exec jedis command, pool:{}, cmd:{}", jedisInfo, method, e);
                 throw e;
