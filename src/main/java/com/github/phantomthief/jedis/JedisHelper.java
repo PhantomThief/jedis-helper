@@ -8,6 +8,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -146,7 +147,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             } catch (Throwable e) {
                 e = Throwables.getRootCause(e);
                 exceptionHandler.accept(pool, e);
-                logger.error("fail to exec jedis command, pool:{}, cmd:{}", jedisInfo, method, e);
+                logger.error("fail to exec jedis command, pool:{}, cmd:{}, args:{}", jedisInfo,
+                        method, Arrays.toString(args), e);
                 throw e;
             }
         }
