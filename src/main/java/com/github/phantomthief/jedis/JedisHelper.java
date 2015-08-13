@@ -27,6 +27,7 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
 
+import redis.clients.jedis.BasicCommands;
 import redis.clients.jedis.BinaryJedis;
 import redis.clients.jedis.BinaryJedisCommands;
 import redis.clients.jedis.BinaryShardedJedis;
@@ -121,6 +122,11 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             }
         }
         return result;
+    }
+
+    public BasicCommands getBasic() {
+        return (BasicCommands) Proxy.newProxyInstance(jedisType.getClassLoader(),
+                jedisType.getInterfaces(), new PoolableJedisCommands());
     }
 
     public JedisCommands get() {
