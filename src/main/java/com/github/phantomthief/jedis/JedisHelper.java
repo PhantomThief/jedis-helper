@@ -113,7 +113,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                         }
                     }
                 } catch (Throwable e) {
-                    exceptionHandler.accept(pool, e);
+                    if (exceptionHandler != null) {
+                        exceptionHandler.accept(pool, e);
+                    }
                     logger.error("fail to exec jedis pipeline command, pool:{}", jedisInfo, e);
                 }
             }
@@ -146,7 +148,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 return invoke;
             } catch (Throwable e) {
                 e = Throwables.getRootCause(e);
-                exceptionHandler.accept(pool, e);
+                if (exceptionHandler != null) {
+                    exceptionHandler.accept(pool, e);
+                }
                 logger.error("fail to exec jedis command, pool:{}, cmd:{}, args:{}", jedisInfo,
                         method, Arrays.toString(args), e);
                 throw e;
@@ -359,7 +363,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                         ScanResult<R> result = scanFunction.apply(jedis, cursor);
                         return result;
                     } catch (Throwable e) {
-                        exceptionHandler.accept(pool, e);
+                        if (exceptionHandler != null) {
+                            exceptionHandler.accept(pool, e);
+                        }
                         if (e instanceof RuntimeException) {
                             throw (RuntimeException) e;
                         } else {
@@ -375,8 +381,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return cursorIteratorEx;
     }
 
-    public static final Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool> newShardedBuilder(
-            Supplier<ShardedJedisPool> poolFactory) {
+    public static final Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool>
+            newShardedBuilder(Supplier<ShardedJedisPool> poolFactory) {
         Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool> builder = new Builder<>();
         builder.poolFactory = (Supplier) poolFactory;
         builder.jedisType = ShardedJedis.class;
@@ -384,8 +390,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return builder;
     }
 
-    public static final Builder<Pipeline, Jedis, JedisPool> newBuilder(
-            Supplier<JedisPool> poolFactory) {
+    public static final Builder<Pipeline, Jedis, JedisPool>
+            newBuilder(Supplier<JedisPool> poolFactory) {
         Builder<Pipeline, Jedis, JedisPool> builder = new Builder<>();
         builder.poolFactory = (Supplier) poolFactory;
         builder.jedisType = Jedis.class;
