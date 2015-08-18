@@ -3,6 +3,8 @@
  */
 package com.github.phantomthief.jedis;
 
+import static java.util.function.Function.identity;
+
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,7 +36,7 @@ public class JedisClusterHelper {
     }
 
     public <K, V> Map<K, V> pipeline(Collection<K> keys, BiFunction<JedisCluster, K, V> func) {
-        return pipeline(keys, func, Function.identity());
+        return pipeline(keys, func, identity());
     }
 
     public <K, T, V> Map<K, V> pipeline(Collection<K> keys, BiFunction<JedisCluster, K, T> func,

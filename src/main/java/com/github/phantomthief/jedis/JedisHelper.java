@@ -3,6 +3,8 @@
  */
 package com.github.phantomthief.jedis;
 
+import static java.util.function.Function.identity;
+
 import java.io.Closeable;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -82,7 +84,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public <K, V> Map<K, V> pipeline(Iterable<K> keys, BiFunction<P, K, Response<V>> function) {
-        return pipeline(keys, function, Function.identity());
+        return pipeline(keys, function, identity());
     }
 
     public <K, V, T> Map<K, T> pipeline(Iterable<K> keys, BiFunction<P, K, Response<V>> function,
