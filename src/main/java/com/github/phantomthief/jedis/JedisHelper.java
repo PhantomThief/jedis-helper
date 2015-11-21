@@ -321,7 +321,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             } else {
                 throw new UnsupportedOperationException();
             }
-        } , ScanResult::getStringCursor, "0").stream();
+        }, ScanResult::getStringCursor, "0").stream();
     }
 
     public Stream<Entry<String, String>> hscan(String key) {
@@ -333,7 +333,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             } else {
                 throw new UnsupportedOperationException();
             }
-        } , ScanResult::getStringCursor, "0").stream();
+        }, ScanResult::getStringCursor, "0").stream();
     }
 
     public Stream<Tuple> zscan(String key) {
@@ -345,7 +345,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             } else {
                 throw new UnsupportedOperationException();
             }
-        } , ScanResult::getStringCursor, "0").stream();
+        }, ScanResult::getStringCursor, "0").stream();
     }
 
     public Stream<String> sscan(String key) {
@@ -357,15 +357,14 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             } else {
                 throw new UnsupportedOperationException();
             }
-        } , ScanResult::getStringCursor, "0").stream();
+        }, ScanResult::getStringCursor, "0").stream();
     }
 
     private <K, R> CursorIteratorEx<R, K, ScanResult<R>> scan(
             BiFunction<J, K, ScanResult<R>> scanFunction,
             Function<ScanResult<R>, K> cursorExtractor, K initCursor) {
-        CursorIteratorEx<R, K, ScanResult<R>> cursorIteratorEx = CursorIteratorEx
-                .<R, K, ScanResult<R>> newBuilder() //
-                .withDataRetriever(cursor -> {
+        CursorIteratorEx<R, K, ScanResult<R>> cursorIteratorEx = CursorIteratorEx.newBuilder() //
+                .withDataRetriever((K cursor) -> {
                     Object pool = poolFactory.get();
                     try (J jedis = getJedis(pool)) {
                         ScanResult<R> result = scanFunction.apply(jedis, cursor);
@@ -382,7 +381,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                     }
                 }) //
                 .withCursorExtractor(cursorExtractor) //
-                .withDataExtractor(s -> s.getResult().iterator()) //
+                .withDataExtractor((ScanResult<R> s) -> s.getResult().iterator()) //
                 .withEndChecker(s -> "0".equals(s) || s == null) //
                 .withInitCursor(initCursor) //
                 .build();
