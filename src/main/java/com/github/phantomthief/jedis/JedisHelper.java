@@ -53,6 +53,10 @@ import redis.clients.util.Pool;
 @SuppressWarnings({ "unchecked", "rawtypes" })
 public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
+    public static final int LIMIT_INFINITY = -1;
+    public static final String POSITIVE_INF = "+inf";
+    public static final String NEGATIVE_INF = "-inf";
+
     private final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(getClass());
 
     private final static int PARTITION_SIZE = 100;
