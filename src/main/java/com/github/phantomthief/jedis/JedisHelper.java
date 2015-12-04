@@ -53,8 +53,8 @@ import redis.clients.util.Pool;
 @SuppressWarnings({ "unchecked", "rawtypes" })
 public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
-    public static final long SETNX_KEY_WAS_NOT_SET = 0L;
-    public static final long SETNX_KEY_WAS_SET = 1L;
+    public static final long SETNX_KEY_NOT_SET = 0L;
+    public static final long SETNX_KEY_SET = 1L;
     public static final int LIMIT_INFINITY = -1;
     public static final String POSITIVE_INF = "+inf";
     public static final String NEGATIVE_INF = "-inf";
