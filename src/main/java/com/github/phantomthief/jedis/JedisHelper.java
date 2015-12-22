@@ -58,6 +58,10 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     public static final int LIMIT_INFINITY = -1;
     public static final String POSITIVE_INF = "+inf";
     public static final String NEGATIVE_INF = "-inf";
+    public static final String NOT_EXIST = "NX";
+    public static final String ALREADY_EXIST = "XX";
+    public static final String SECONDS = "EX";
+    public static final String MILLISECONDS = "PX";
 
     private final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(getClass());
 
