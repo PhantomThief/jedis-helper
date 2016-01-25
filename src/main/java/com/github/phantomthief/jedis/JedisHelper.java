@@ -3,6 +3,10 @@
  */
 package com.github.phantomthief.jedis;
 
+import static com.google.common.base.Throwables.propagate;
+import static com.google.common.collect.Iterables.partition;
+import static com.google.common.collect.Maps.newHashMapWithExpectedSize;
+import static java.lang.reflect.Proxy.newProxyInstance;
 import static java.util.function.Function.identity;
 
 import java.io.Closeable;
@@ -24,11 +28,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import com.github.phantomthief.util.CursorIteratorEx;
-import com.google.common.base.Throwables;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Maps;
-
 import redis.clients.jedis.BasicCommands;
 import redis.clients.jedis.BinaryJedis;
 import redis.clients.jedis.BinaryJedisCommands;
@@ -47,6 +46,11 @@ import redis.clients.jedis.ShardedJedisPool;
 import redis.clients.jedis.Tuple;
 import redis.clients.util.Pool;
 
+import com.github.phantomthief.util.CursorIteratorEx;
+import com.google.common.base.Throwables;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Maps;
+
 /**
  * @author w.vela
  */
@@ -62,11 +66,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     public static final String ALREADY_EXIST = "XX";
     public static final String SECONDS = "EX";
     public static final String MILLISECONDS = "PX";
-
-    private final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(getClass());
-
     private final static int PARTITION_SIZE = 100;
-
+    private final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(getClass());
     private final Supplier<Object> poolFactory;
     private final BiConsumer<Object, Throwable> exceptionHandler;
     private final int pipelinePartitonSize;
@@ -74,13 +75,6 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     private final Class<?> jedisType;
     private final Class<?> binaryJedisType;
 
-    /**
-     * @param poolFactory
-     * @param exceptionHandler
-     * @param pipelinePartitonSize
-     * @param jedisType
-     * @param binaryJedisType
-     */
     private JedisHelper(Supplier<Object> poolFactory, //
             BiConsumer<Object, Throwable> exceptionHandler, //
             int pipelinePartitonSize, //
@@ -91,6 +85,37 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         this.pipelinePartitonSize = pipelinePartitonSize;
         this.jedisType = jedisType;
         this.binaryJedisType = binaryJedisType;
+    }
+
+    public static String getShardBitKey(long bit, String keyPrefix, int keyHashRange) {
+        return keyPrefix + "_" + (bit / keyHashRange);
+    }
+
+    public static Map<Long, String> getShardBitKeys(Collection<Long> bits, String keyPrefix,
+            int keyHashRange) {
+        Map<Long, String> result = new HashMap<>();
+        for (Long bit : bits) {
+            result.put(bit, getShardBitKey(bit, keyPrefix, keyHashRange));
+        }
+        return result;
+    }
+
+    public static Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool>
+            newShardedBuilder(Supplier<ShardedJedisPool> poolFactory) {
+        Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool> builder = new Builder<>();
+        builder.poolFactory = (Supplier) poolFactory;
+        builder.jedisType = ShardedJedis.class;
+        builder.binaryJedisType = BinaryShardedJedis.class;
+        return builder;
+    }
+
+    public static Builder<Pipeline, Jedis, JedisPool> newBuilder(
+            Supplier<JedisPool> poolFactory) {
+        Builder<Pipeline, Jedis, JedisPool> builder = new Builder<>();
+        builder.poolFactory = (Supplier) poolFactory;
+        builder.jedisType = Jedis.class;
+        builder.binaryJedisType = BinaryJedis.class;
+        return builder;
     }
 
     public <K, V> Map<K, V> pipeline(Iterable<K> keys, BiFunction<P, K, Response<V>> function) {
@@ -105,9 +130,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         } else {
             size = 16;
         }
-        Map<K, T> result = Maps.newHashMapWithExpectedSize(size);
+        Map<K, T> result = newHashMapWithExpectedSize(size);
         if (keys != null) {
-            Iterable<List<K>> partition = Iterables.partition(keys, pipelinePartitonSize);
+            Iterable<List<K>> partition = partition(keys, pipelinePartitonSize);
             for (List<K> list : partition) {
                 Object pool = poolFactory.get();
                 String jedisInfo = null;
@@ -120,11 +145,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                         thisMap.put(key, apply);
                     }
                     syncPipeline(pipeline);
-                    for (Entry<K, Response<V>> entry : thisMap.entrySet()) {
-                        if (entry.getValue() != null) {
-                            result.put(entry.getKey(), decoder.apply(entry.getValue().get()));
-                        }
-                    }
+                    thisMap.entrySet().stream().filter(entry -> entry.getValue() != null)
+                            .forEach(entry -> result.put(entry.getKey(), decoder.apply(entry.getValue().get())));
                 } catch (Throwable e) {
                     if (exceptionHandler != null) {
                         exceptionHandler.accept(pool, e);
@@ -137,43 +159,18 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public BasicCommands getBasic() {
-        return (BasicCommands) Proxy.newProxyInstance(jedisType.getClassLoader(),
+        return (BasicCommands) newProxyInstance(jedisType.getClassLoader(),
                 jedisType.getInterfaces(), new PoolableJedisCommands());
     }
 
     public JedisCommands get() {
-        return (JedisCommands) Proxy.newProxyInstance(jedisType.getClassLoader(),
+        return (JedisCommands) newProxyInstance(jedisType.getClassLoader(),
                 jedisType.getInterfaces(), new PoolableJedisCommands());
     }
 
     public BinaryJedisCommands getBinary() {
-        return (BinaryJedisCommands) Proxy.newProxyInstance(binaryJedisType.getClassLoader(),
+        return (BinaryJedisCommands) newProxyInstance(binaryJedisType.getClassLoader(),
                 binaryJedisType.getInterfaces(), new PoolableJedisCommands());
-    }
-
-    private final class PoolableJedisCommands implements InvocationHandler {
-
-        /* (non-Javadoc)
-         * @see java.lang.reflect.InvocationHandler#invoke(java.lang.Object, java.lang.reflect.Method, java.lang.Object[])
-         */
-        @Override
-        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-            String jedisInfo = null;
-            Object pool = poolFactory.get();
-            try (J jedis = getJedis(pool)) {
-                jedisInfo = getJedisInfo(jedis);
-                Object invoke = method.invoke(jedis, args);
-                return invoke;
-            } catch (Throwable e) {
-                e = Throwables.getRootCause(e);
-                if (exceptionHandler != null) {
-                    exceptionHandler.accept(pool, e);
-                }
-                logger.error("fail to exec jedis command, pool:{}, cmd:{}, args:{}", jedisInfo,
-                        method, Arrays.toString(args), e);
-                throw e;
-            }
-        }
     }
 
     private void syncPipeline(P pipeline) {
@@ -215,23 +212,12 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 false);
     }
 
-    public Map<Long, Boolean> getShardBit(Collection<Long> bits, String keyPrefix,
-            int keyHashRange) {
-        return pipeline(bits, (p, bit) -> p.getbit(getShardBitKey(bit, keyPrefix, keyHashRange),
-                bit % keyHashRange));
-    }
-
-    public static String getShardBitKey(long bit, String keyPrefix, int keyHashRange) {
-        return keyPrefix + "_" + (bit / keyHashRange);
-    }
-
-    public static Map<Long, String> getShardBitKeys(Collection<Long> bits, String keyPrefix,
-            int keyHashRange) {
-        Map<Long, String> result = new HashMap<>();
-        for (Long bit : bits) {
-            result.put(bit, getShardBitKey(bit, keyPrefix, keyHashRange));
-        }
-        return result;
+    public Map<Long, Boolean>
+            getShardBit(Collection<Long> bits, String keyPrefix, int keyHashRange) {
+        return pipeline(
+                bits,
+                (p, bit) -> p.getbit(getShardBitKey(bit, keyPrefix, keyHashRange), bit
+                        % keyHashRange));
     }
 
     public long getShardBitCount(String keyPrefix, int keyHashRange, long start, long end) {
@@ -249,12 +235,14 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
     public Map<Long, Boolean> setShardBitSet(Collection<Long> bits, String keyPrefix,
             int keyHashRange, boolean value) {
-        return pipeline(bits, (p, bit) -> p.setbit(getShardBitKey(bit, keyPrefix, keyHashRange),
-                bit % keyHashRange, value));
+        return pipeline(
+                bits,
+                (p, bit) -> p.setbit(getShardBitKey(bit, keyPrefix, keyHashRange), bit
+                        % keyHashRange, value));
     }
 
-    public Map<Long, Boolean> setShardBit(Collection<Long> bits, String keyPrefix,
-            int keyHashRange) {
+    public Map<Long, Boolean>
+            setShardBit(Collection<Long> bits, String keyPrefix, int keyHashRange) {
         return setShardBitSet(bits, keyPrefix, keyHashRange, true);
     }
 
@@ -268,8 +256,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return allKeys.entrySet().stream().flatMap(this::mapToLong);
     }
 
-    private Map<Long, String> generateKeys(String keyPrefix, int keyHashRange, long start,
-            long end) {
+    private Map<Long, String>
+            generateKeys(String keyPrefix, int keyHashRange, long start, long end) {
         Map<Long, String> result = new LinkedHashMap<>();
         for (long i = start; i <= end; i += keyHashRange) {
             result.put((i / keyHashRange) * keyHashRange, keyPrefix + "_" + (i / keyHashRange));
@@ -288,38 +276,6 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             }
         }
         return result.stream();
-    }
-
-    public static final class Builder<P extends PipelineBase, J extends Closeable, O> {
-
-        private Supplier<Object> poolFactory;
-        private BiConsumer<O, Throwable> exceptionHandler;
-        private int pipelinePartitonSize;
-
-        private Class<?> jedisType;
-        private Class<?> binaryJedisType;
-
-        public Builder<P, J, O> withExceptionHandler(BiConsumer<O, Throwable> exceptionHandler) {
-            this.exceptionHandler = exceptionHandler;
-            return this;
-        }
-
-        public Builder<P, J, O> withPipelinePartitionSize(int size) {
-            this.pipelinePartitonSize = size;
-            return this;
-        }
-
-        public JedisHelper<P, J> build() {
-            ensure();
-            return new JedisHelper<>(poolFactory, (BiConsumer<Object, Throwable>) exceptionHandler,
-                    pipelinePartitonSize, jedisType, binaryJedisType);
-        }
-
-        private void ensure() {
-            if (pipelinePartitonSize <= 0) {
-                pipelinePartitonSize = PARTITION_SIZE;
-            }
-        }
     }
 
     public Stream<String> scan(ScanParams params) {
@@ -383,11 +339,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                         if (exceptionHandler != null) {
                             exceptionHandler.accept(pool, e);
                         }
-                        if (e instanceof RuntimeException) {
-                            throw (RuntimeException) e;
-                        } else {
-                            throw new RuntimeException(e);
-                        }
+                        throw propagate(e);
                     }
                 }) //
                 .withCursorExtractor(cursorExtractor) //
@@ -398,21 +350,60 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return cursorIteratorEx;
     }
 
-    public static final Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool>
-            newShardedBuilder(Supplier<ShardedJedisPool> poolFactory) {
-        Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool> builder = new Builder<>();
-        builder.poolFactory = (Supplier) poolFactory;
-        builder.jedisType = ShardedJedis.class;
-        builder.binaryJedisType = BinaryShardedJedis.class;
-        return builder;
+    public static final class Builder<P extends PipelineBase, J extends Closeable, O> {
+
+        private Supplier<Object> poolFactory;
+        private BiConsumer<O, Throwable> exceptionHandler;
+        private int pipelinePartitonSize;
+
+        private Class<?> jedisType;
+        private Class<?> binaryJedisType;
+
+        public Builder<P, J, O> withExceptionHandler(BiConsumer<O, Throwable> exceptionHandler) {
+            this.exceptionHandler = exceptionHandler;
+            return this;
+        }
+
+        public Builder<P, J, O> withPipelinePartitionSize(int size) {
+            this.pipelinePartitonSize = size;
+            return this;
+        }
+
+        public JedisHelper<P, J> build() {
+            ensure();
+            return new JedisHelper<>(poolFactory, (BiConsumer<Object, Throwable>) exceptionHandler,
+                    pipelinePartitonSize, jedisType, binaryJedisType);
+        }
+
+        private void ensure() {
+            if (pipelinePartitonSize <= 0) {
+                pipelinePartitonSize = PARTITION_SIZE;
+            }
+        }
     }
 
-    public static final Builder<Pipeline, Jedis, JedisPool>
-            newBuilder(Supplier<JedisPool> poolFactory) {
-        Builder<Pipeline, Jedis, JedisPool> builder = new Builder<>();
-        builder.poolFactory = (Supplier) poolFactory;
-        builder.jedisType = Jedis.class;
-        builder.binaryJedisType = BinaryJedis.class;
-        return builder;
+    private final class PoolableJedisCommands implements InvocationHandler {
+
+        /* (non-Javadoc)
+         * @see java.lang.reflect.InvocationHandler#invoke(java.lang.Object, java.lang.reflect.Method, java.lang.Object[])
+         */
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            String jedisInfo = null;
+            Object pool = poolFactory.get();
+            try (J jedis = getJedis(pool)) {
+                jedisInfo = getJedisInfo(jedis);
+                Object invoke = method.invoke(jedis, args);
+                return invoke;
+            } catch (Throwable e) {
+                e = Throwables.getRootCause(e);
+                if (exceptionHandler != null) {
+                    exceptionHandler.accept(pool, e);
+                }
+                logger.error("fail to exec jedis command, pool:{}, cmd:{}, args:{}", jedisInfo,
+                        method, Arrays.toString(args), e);
+                throw e;
+            }
+        }
     }
 }
