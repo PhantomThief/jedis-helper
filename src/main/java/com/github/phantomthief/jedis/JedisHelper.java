@@ -3,20 +3,21 @@
  */
 package com.github.phantomthief.jedis;
 
+import static com.google.common.base.Throwables.getRootCause;
 import static com.google.common.base.Throwables.propagate;
 import static com.google.common.collect.Iterables.partition;
 import static com.google.common.collect.Maps.newHashMapWithExpectedSize;
 import static java.lang.reflect.Proxy.newProxyInstance;
+import static java.util.Collections.singleton;
 import static java.util.function.Function.identity;
+import static org.slf4j.LoggerFactory.getLogger;
 
 import java.io.Closeable;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,6 +28,10 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
+
+import org.slf4j.Logger;
+
+import com.github.phantomthief.util.CursorIteratorEx;
 
 import redis.clients.jedis.BasicCommands;
 import redis.clients.jedis.BinaryJedis;
@@ -46,11 +51,6 @@ import redis.clients.jedis.ShardedJedisPool;
 import redis.clients.jedis.Tuple;
 import redis.clients.util.Pool;
 
-import com.github.phantomthief.util.CursorIteratorEx;
-import com.google.common.base.Throwables;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Maps;
-
 /**
  * @author w.vela
  */
@@ -67,7 +67,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     public static final String SECONDS = "EX";
     public static final String MILLISECONDS = "PX";
     private final static int PARTITION_SIZE = 100;
-    private final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(getClass());
+    private final Logger logger = getLogger(getClass());
     private final Supplier<Object> poolFactory;
     private final BiConsumer<Object, Throwable> exceptionHandler;
     private final int pipelinePartitonSize;
@@ -208,7 +208,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public boolean getShardBit(long bit, String keyPrefix, int keyHashRange) {
-        return getShardBit(Collections.singleton(bit), keyPrefix, keyHashRange).getOrDefault(bit,
+        return getShardBit(singleton(bit), keyPrefix, keyHashRange).getOrDefault(bit,
                 false);
     }
 
@@ -226,11 +226,11 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public boolean setShardBit(long bit, String keyPrefix, int keyHashRange) {
-        return setShardBit(Collections.singleton(bit), keyPrefix, keyHashRange).get(bit);
+        return setShardBit(singleton(bit), keyPrefix, keyHashRange).get(bit);
     }
 
     public boolean setShardBit(long bit, String keyPrefix, int keyHashRange, boolean value) {
-        return setShardBitSet(Collections.singleton(bit), keyPrefix, keyHashRange, value).get(bit);
+        return setShardBitSet(singleton(bit), keyPrefix, keyHashRange, value).get(bit);
     }
 
     public Map<Long, Boolean> setShardBitSet(Collection<Long> bits, String keyPrefix,
@@ -393,10 +393,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             Object pool = poolFactory.get();
             try (J jedis = getJedis(pool)) {
                 jedisInfo = getJedisInfo(jedis);
-                Object invoke = method.invoke(jedis, args);
-                return invoke;
+                return method.invoke(jedis, args);
             } catch (Throwable e) {
-                e = Throwables.getRootCause(e);
+                e = getRootCause(e);
                 if (exceptionHandler != null) {
                     exceptionHandler.accept(pool, e);
                 }

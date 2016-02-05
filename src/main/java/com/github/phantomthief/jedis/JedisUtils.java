@@ -6,6 +6,7 @@ package com.github.phantomthief.jedis;
 import static com.carrotsearch.hppc.Containers.DEFAULT_EXPECTED_ELEMENTS;
 import static com.google.common.collect.Iterables.partition;
 import static com.google.common.collect.Maps.difference;
+import static java.lang.Integer.MAX_VALUE;
 import static java.util.stream.Collectors.toMap;
 import static org.slf4j.LoggerFactory.getLogger;
 
@@ -15,23 +16,25 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.Function;
 
-import redis.clients.jedis.JedisCommands;
-import redis.clients.jedis.Tuple;
+import org.slf4j.Logger;
 
 import com.carrotsearch.hppc.IntHashSet;
 import com.carrotsearch.hppc.IntSet;
 import com.google.common.collect.MapDifference;
 import com.google.common.collect.MapDifference.ValueDifference;
 
+import redis.clients.jedis.JedisCommands;
+import redis.clients.jedis.Tuple;
+
 /**
  * @author w.vela
  */
 public final class JedisUtils {
 
-    private static final int MAX_ZSET_COUNT = Integer.MAX_VALUE / 2;
+    private static final int MAX_ZSET_COUNT = MAX_VALUE / 2;
     private static final int ZADD_MAX_SPLIT_COUNT = 1000;
 
-    private static org.slf4j.Logger logger = getLogger(JedisUtils.class);
+    private static Logger logger = getLogger(JedisUtils.class);
 
     private JedisUtils() {
         throw new UnsupportedOperationException();
