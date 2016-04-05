@@ -100,8 +100,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return result;
     }
 
-    public static Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool>
-            newShardedBuilder(Supplier<ShardedJedisPool> poolFactory) {
+    public static Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool> newShardedBuilder(
+            Supplier<ShardedJedisPool> poolFactory) {
         Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool> builder = new Builder<>();
         builder.poolFactory = (Supplier) poolFactory;
         builder.jedisType = ShardedJedis.class;
@@ -109,8 +109,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return builder;
     }
 
-    public static Builder<Pipeline, Jedis, JedisPool> newBuilder(
-            Supplier<JedisPool> poolFactory) {
+    public static Builder<Pipeline, Jedis, JedisPool> newBuilder(Supplier<JedisPool> poolFactory) {
         Builder<Pipeline, Jedis, JedisPool> builder = new Builder<>();
         builder.poolFactory = (Supplier) poolFactory;
         builder.jedisType = Jedis.class;
@@ -145,8 +144,12 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                         thisMap.put(key, apply);
                     }
                     syncPipeline(pipeline);
-                    thisMap.entrySet().stream().filter(entry -> entry.getValue() != null)
-                            .forEach(entry -> result.put(entry.getKey(), decoder.apply(entry.getValue().get())));
+                    thisMap.entrySet()
+                            .stream()
+                            .filter(entry -> entry.getValue() != null)
+                            .forEach(
+                                    entry -> result.put(entry.getKey(),
+                                            decoder.apply(entry.getValue().get())));
                 } catch (Throwable e) {
                     if (exceptionHandler != null) {
                         exceptionHandler.accept(pool, e);
@@ -208,8 +211,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public boolean getShardBit(long bit, String keyPrefix, int keyHashRange) {
-        return getShardBit(singleton(bit), keyPrefix, keyHashRange).getOrDefault(bit,
-                false);
+        return getShardBit(singleton(bit), keyPrefix, keyHashRange).getOrDefault(bit, false);
     }
 
     public Map<Long, Boolean>
@@ -279,7 +281,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public Stream<String> scan(ScanParams params) {
-        return this.<String, String> scan((j, c) -> {
+        return this.scan((j, c) -> {
             if (j instanceof Jedis) {
                 return ((Jedis) j).scan(c, params);
             } else if (j instanceof ShardedJedis) {
@@ -291,7 +293,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public Stream<Entry<String, String>> hscan(String key) {
-        return this.<String, Entry<String, String>> scan((j, c) -> {
+        return this.scan((j, c) -> {
             if (j instanceof Jedis) {
                 return ((Jedis) j).hscan(key, c);
             } else if (j instanceof ShardedJedis) {
@@ -303,7 +305,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public Stream<Tuple> zscan(String key) {
-        return this.<String, Tuple> scan((j, c) -> {
+        return this.scan((j, c) -> {
             if (j instanceof Jedis) {
                 return ((Jedis) j).zscan(key, c);
             } else if (j instanceof ShardedJedis) {
@@ -315,7 +317,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public Stream<String> sscan(String key) {
-        return this.<String, String> scan((j, c) -> {
+        return this.scan((j, c) -> {
             if (j instanceof Jedis) {
                 return ((Jedis) j).sscan(key, c);
             } else if (j instanceof ShardedJedis) {
@@ -329,12 +331,11 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     private <K, R> CursorIteratorEx<R, K, ScanResult<R>> scan(
             BiFunction<J, K, ScanResult<R>> scanFunction,
             Function<ScanResult<R>, K> cursorExtractor, K initCursor) {
-        CursorIteratorEx<R, K, ScanResult<R>> cursorIteratorEx = CursorIteratorEx.newBuilder() //
+        return CursorIteratorEx.newBuilder() //
                 .withDataRetriever((K cursor) -> {
                     Object pool = poolFactory.get();
                     try (J jedis = getJedis(pool)) {
-                        ScanResult<R> result = scanFunction.apply(jedis, cursor);
-                        return result;
+                        return scanFunction.apply(jedis, cursor);
                     } catch (Throwable e) {
                         if (exceptionHandler != null) {
                             exceptionHandler.accept(pool, e);
@@ -347,7 +348,6 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 .withEndChecker(s -> "0".equals(s) || s == null) //
                 .withInitCursor(initCursor) //
                 .build();
-        return cursorIteratorEx;
     }
 
     public static final class Builder<P extends PipelineBase, J extends Closeable, O> {
@@ -384,9 +384,6 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
     private final class PoolableJedisCommands implements InvocationHandler {
 
-        /* (non-Javadoc)
-         * @see java.lang.reflect.InvocationHandler#invoke(java.lang.Object, java.lang.reflect.Method, java.lang.Object[])
-         */
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             String jedisInfo = null;
