@@ -281,7 +281,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public Stream<String> scan(ScanParams params) {
-        return this.scan((j, c) -> {
+        return this.<String, String> scan((j, c) -> {
             if (j instanceof Jedis) {
                 return ((Jedis) j).scan(c, params);
             } else if (j instanceof ShardedJedis) {
@@ -293,7 +293,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public Stream<Entry<String, String>> hscan(String key) {
-        return this.scan((j, c) -> {
+        return this.<String, Entry<String, String>> scan((j, c) -> {
             if (j instanceof Jedis) {
                 return ((Jedis) j).hscan(key, c);
             } else if (j instanceof ShardedJedis) {
@@ -305,7 +305,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public Stream<Tuple> zscan(String key) {
-        return this.scan((j, c) -> {
+        return this.<String, Tuple> scan((j, c) -> {
             if (j instanceof Jedis) {
                 return ((Jedis) j).zscan(key, c);
             } else if (j instanceof ShardedJedis) {
@@ -317,7 +317,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public Stream<String> sscan(String key) {
-        return this.scan((j, c) -> {
+        return this.<String, String> scan((j, c) -> {
             if (j instanceof Jedis) {
                 return ((Jedis) j).sscan(key, c);
             } else if (j instanceof ShardedJedis) {
