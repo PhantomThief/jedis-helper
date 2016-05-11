@@ -141,15 +141,12 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                     Map<K, Response<V>> thisMap = new HashMap<>(list.size());
                     for (K key : list) {
                         Response<V> apply = function.apply(pipeline, key);
-                        thisMap.put(key, apply);
+                        if (apply != null) {
+                            thisMap.put(key, apply);
+                        }
                     }
                     syncPipeline(pipeline);
-                    thisMap.entrySet()
-                            .stream()
-                            .filter(entry -> entry.getValue() != null)
-                            .forEach(
-                                    entry -> result.put(entry.getKey(),
-                                            decoder.apply(entry.getValue().get())));
+                    thisMap.forEach((key, value) -> result.put(key, decoder.apply(value.get())));
                 } catch (Throwable e) {
                     if (exceptionHandler != null) {
                         exceptionHandler.accept(pool, e);
