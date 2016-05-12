@@ -100,8 +100,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return result;
     }
 
-    public static Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool> newShardedBuilder(
-            Supplier<ShardedJedisPool> poolFactory) {
+    public static Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool>
+            newShardedBuilder(Supplier<ShardedJedisPool> poolFactory) {
         Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool> builder = new Builder<>();
         builder.poolFactory = (Supplier) poolFactory;
         builder.jedisType = ShardedJedis.class;
@@ -211,12 +211,10 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return getShardBit(singleton(bit), keyPrefix, keyHashRange).getOrDefault(bit, false);
     }
 
-    public Map<Long, Boolean>
-            getShardBit(Collection<Long> bits, String keyPrefix, int keyHashRange) {
-        return pipeline(
-                bits,
-                (p, bit) -> p.getbit(getShardBitKey(bit, keyPrefix, keyHashRange), bit
-                        % keyHashRange));
+    public Map<Long, Boolean> getShardBit(Collection<Long> bits, String keyPrefix,
+            int keyHashRange) {
+        return pipeline(bits, (p, bit) -> p.getbit(getShardBitKey(bit, keyPrefix, keyHashRange),
+                bit % keyHashRange));
     }
 
     public long getShardBitCount(String keyPrefix, int keyHashRange, long start, long end) {
@@ -234,14 +232,12 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
     public Map<Long, Boolean> setShardBitSet(Collection<Long> bits, String keyPrefix,
             int keyHashRange, boolean value) {
-        return pipeline(
-                bits,
-                (p, bit) -> p.setbit(getShardBitKey(bit, keyPrefix, keyHashRange), bit
-                        % keyHashRange, value));
+        return pipeline(bits, (p, bit) -> p.setbit(getShardBitKey(bit, keyPrefix, keyHashRange),
+                bit % keyHashRange, value));
     }
 
-    public Map<Long, Boolean>
-            setShardBit(Collection<Long> bits, String keyPrefix, int keyHashRange) {
+    public Map<Long, Boolean> setShardBit(Collection<Long> bits, String keyPrefix,
+            int keyHashRange) {
         return setShardBitSet(bits, keyPrefix, keyHashRange, true);
     }
 
@@ -255,8 +251,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return allKeys.entrySet().stream().flatMap(this::mapToLong);
     }
 
-    private Map<Long, String>
-            generateKeys(String keyPrefix, int keyHashRange, long start, long end) {
+    private Map<Long, String> generateKeys(String keyPrefix, int keyHashRange, long start,
+            long end) {
         Map<Long, String> result = new LinkedHashMap<>();
         for (long i = start; i <= end; i += keyHashRange) {
             result.put((i / keyHashRange) * keyHashRange, keyPrefix + "_" + (i / keyHashRange));

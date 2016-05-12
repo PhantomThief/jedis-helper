@@ -86,8 +86,8 @@ public final class JedisUtils {
             MapDifference<String, Double> difference = difference(raw, exists);
             if (!difference.areEqual()) {
                 if (!difference.entriesOnlyOnLeft().isEmpty()) {
-                    for (List<Entry<String, Double>> list : partition(difference
-                            .entriesOnlyOnLeft().entrySet(), ZADD_MAX_SPLIT_COUNT)) {
+                    for (List<Entry<String, Double>> list : partition(
+                            difference.entriesOnlyOnLeft().entrySet(), ZADD_MAX_SPLIT_COUNT)) {
                         jedis.zadd(realKey,
                                 list.stream().collect(toMap(Entry::getKey, Entry::getValue)));
                         changed = true;
@@ -105,8 +105,8 @@ public final class JedisUtils {
                             realKey, difference.entriesOnlyOnRight().keySet());
                 }
                 if (!difference.entriesDiffering().isEmpty()) {
-                    for (List<Entry<String, ValueDifference<Double>>> list : partition(difference
-                            .entriesDiffering().entrySet(), ZADD_MAX_SPLIT_COUNT)) {
+                    for (List<Entry<String, ValueDifference<Double>>> list : partition(
+                            difference.entriesDiffering().entrySet(), ZADD_MAX_SPLIT_COUNT)) {
                         jedis.zadd(realKey, list.stream() //
                                 .filter(e -> e.getValue().leftValue() != null) //
                                 .collect(toMap(Entry::getKey, e -> e.getValue().leftValue())));
