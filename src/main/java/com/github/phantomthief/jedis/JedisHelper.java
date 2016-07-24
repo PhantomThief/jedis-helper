@@ -82,14 +82,22 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     private final Class<?> binaryJedisType;
 
     private JedisHelper(Supplier<Object> poolFactory, //
-            BiConsumer<Object, Throwable> exceptionHandler, //
+            BiConsumer<Object, Throwable> handler, //
             int pipelinePartitionSize, //
             Class<?> jedisType, //
             Class<?> binaryJedisType, //
             Supplier<Object> stopWatchStart, //
             TriConsumer<Object, String, Throwable> stopWatchStop) {
         this.poolFactory = poolFactory;
-        this.exceptionHandler = exceptionHandler;
+        this.exceptionHandler = (t, e) -> {
+            if (handler != null) {
+                try {
+                    handler.accept(t, e);
+                } catch (Throwable ex) {
+                    logger.error("", ex);
+                }
+            }
+        };
         this.pipelinePartitionSize = pipelinePartitionSize;
         this.jedisType = jedisType;
         this.binaryJedisType = binaryJedisType;
@@ -160,9 +168,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                     stopWatchStop(stopWatch, PIPELINE, null);
                     thisMap.forEach((key, value) -> result.put(key, decoder.apply(value.get())));
                 } catch (Throwable e) {
-                    if (exceptionHandler != null) {
-                        exceptionHandler.accept(pool, e);
-                    }
+                    exceptionHandler.accept(pool, e);
                     logger.error("fail to exec jedis pipeline command, pool:{}", jedisInfo, e);
                     stopWatchStop(stopWatch, PIPELINE, e);
                 }
@@ -343,9 +349,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                     try (J jedis = getJedis(pool)) {
                         return scanFunction.apply(jedis, cursor);
                     } catch (Throwable e) {
-                        if (exceptionHandler != null) {
-                            exceptionHandler.accept(pool, e);
-                        }
+                        exceptionHandler.accept(pool, e);
                         throw propagate(e);
                     }
                 }) //
@@ -427,9 +431,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 return result;
             } catch (Throwable e) {
                 e = getRootCause(e);
-                if (exceptionHandler != null) {
-                    exceptionHandler.accept(pool, e);
-                }
+                exceptionHandler.accept(pool, e);
                 logger.error("fail to exec jedis command, pool:{}, cmd:{}, args:{}", jedisInfo,
                         method, Arrays.toString(args), e);
                 stopWatchStop(stopWatch, method.getName(), e);
