@@ -1,22 +1,21 @@
 /**
- * 
+ *
  */
 package com.github.phantomthief.jedis;
 
-import static com.google.common.base.Throwables.getRootCause;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Throwables.propagate;
 import static com.google.common.collect.Iterables.partition;
 import static com.google.common.collect.Maps.newHashMapWithExpectedSize;
 import static java.lang.reflect.Proxy.newProxyInstance;
 import static java.util.Collections.singleton;
 import static java.util.function.Function.identity;
-import static org.slf4j.LoggerFactory.getLogger;
 
 import java.io.Closeable;
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -25,14 +24,17 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.github.phantomthief.util.CursorIteratorEx;
-import com.github.phantomthief.util.TriConsumer;
+import com.github.phantomthief.util.ThrowableBiConsumer;
+import com.google.common.net.HostAndPort;
 
 import redis.clients.jedis.BasicCommands;
 import redis.clients.jedis.BinaryJedis;
@@ -55,8 +57,9 @@ import redis.clients.util.Pool;
 /**
  * @author w.vela
  */
-@SuppressWarnings({ "unchecked", "rawtypes" })
 public class JedisHelper<P extends PipelineBase, J extends Closeable> {
+
+    private static final Logger logger = LoggerFactory.getLogger(JedisHelper.class);
 
     public static final long SETNX_KEY_NOT_SET = 0L;
     public static final long SETNX_KEY_SET = 1L;
@@ -70,13 +73,12 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
     private static final String PIPELINE = "pipeline";
     private final static int PARTITION_SIZE = 100;
-    private final Logger logger = getLogger(getClass());
     private final Supplier<Object> poolFactory;
     private final BiConsumer<Object, Throwable> exceptionHandler;
     private final int pipelinePartitionSize;
 
     private final Supplier<Object> stopWatchStart;
-    private final TriConsumer<Object, String, Throwable> stopWatchStop;
+    private final Consumer<StopTheWatch<Object>> stopWatchStop;
 
     private final Class<?> jedisType;
     private final Class<?> binaryJedisType;
@@ -87,17 +89,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             Class<?> jedisType, //
             Class<?> binaryJedisType, //
             Supplier<Object> stopWatchStart, //
-            TriConsumer<Object, String, Throwable> stopWatchStop) {
+            Consumer<StopTheWatch<Object>> stopWatchStop) {
         this.poolFactory = poolFactory;
-        this.exceptionHandler = (t, e) -> {
-            if (handler != null) {
-                try {
-                    handler.accept(t, e);
-                } catch (Throwable ex) {
-                    logger.error("", ex);
-                }
-            }
-        };
+        this.exceptionHandler = handler;
         this.pipelinePartitionSize = pipelinePartitionSize;
         this.jedisType = jedisType;
         this.binaryJedisType = binaryJedisType;
@@ -118,6 +112,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return result;
     }
 
+    @SuppressWarnings("unchecked")
     public static Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool>
             newShardedBuilder(Supplier<ShardedJedisPool> poolFactory) {
         Builder<ShardedJedisPipeline, ShardedJedis, ShardedJedisPool> builder = new Builder<>();
@@ -127,6 +122,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return builder;
     }
 
+    @SuppressWarnings("unchecked")
     public static Builder<Pipeline, Jedis, JedisPool> newBuilder(Supplier<JedisPool> poolFactory) {
         Builder<Pipeline, Jedis, JedisPool> builder = new Builder<>();
         builder.poolFactory = (Supplier) poolFactory;
@@ -152,7 +148,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             Iterable<List<K>> partition = partition(keys, pipelinePartitionSize);
             for (List<K> list : partition) {
                 Object pool = poolFactory.get();
-                String jedisInfo = null;
+                HostAndPort jedisInfo = null;
                 Object stopWatch = stopWatchStart();
                 try (J jedis = getJedis(pool)) {
                     jedisInfo = getJedisInfo(jedis);
@@ -165,12 +161,11 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                         }
                     }
                     syncPipeline(pipeline);
-                    stopWatchStop(stopWatch, PIPELINE, null);
+                    stopWatchStop(stopWatch, jedisInfo, PIPELINE, null);
                     thisMap.forEach((key, value) -> result.put(key, decoder.apply(value.get())));
                 } catch (Throwable e) {
                     exceptionHandler.accept(pool, e);
-                    logger.error("fail to exec jedis pipeline command, pool:{}", jedisInfo, e);
-                    stopWatchStop(stopWatch, PIPELINE, e);
+                    stopWatchStop(stopWatch, jedisInfo, PIPELINE, e);
                 }
             }
         }
@@ -200,14 +195,15 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         }
     }
 
-    private String getJedisInfo(Object obj) {
+    private HostAndPort getJedisInfo(Object obj) {
         if (obj instanceof Jedis) {
             Jedis jedis = (Jedis) obj;
-            return jedis.getClient().getHost() + ":" + jedis.getClient().getPort();
+            return HostAndPort.fromParts(jedis.getClient().getHost(), jedis.getClient().getPort());
         }
         return null;
     }
 
+    @SuppressWarnings("unchecked")
     private J getJedis(Object pool) {
         if (pool instanceof Pool) {
             return ((Pool<J>) pool).getResource();
@@ -216,6 +212,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private P pipeline(J jedis) {
         if (jedis instanceof Jedis) {
             return (P) ((Jedis) jedis).pipelined();
@@ -262,7 +259,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
     public void delShardBit(String keyPrefix, int keyHashRange, long start, long end) {
         Map<Long, String> allKeys = generateKeys(keyPrefix, keyHashRange, start, end);
-        allKeys.values().stream().forEach(get()::del);
+        allKeys.values().forEach(get()::del);
     }
 
     public Stream<Long> iterateShardBit(String keyPrefix, int keyHashRange, long start, long end) {
@@ -292,7 +289,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         return result.stream();
     }
 
+    @SuppressWarnings("RedundantTypeArguments")
     public Stream<String> scan(ScanParams params) {
+        // javac cannot infer types...
         return this.<String, String> scan((j, c) -> {
             if (j instanceof Jedis) {
                 return ((Jedis) j).scan(c, params);
@@ -304,7 +303,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         }, ScanResult::getStringCursor, "0").stream();
     }
 
+    @SuppressWarnings("RedundantTypeArguments")
     public Stream<Entry<String, String>> hscan(String key) {
+        // javac cannot infer types...
         return this.<String, Entry<String, String>> scan((j, c) -> {
             if (j instanceof Jedis) {
                 return ((Jedis) j).hscan(key, c);
@@ -316,7 +317,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         }, ScanResult::getStringCursor, "0").stream();
     }
 
+    @SuppressWarnings("RedundantTypeArguments")
     public Stream<Tuple> zscan(String key) {
+        // javac cannot infer types...
         return this.<String, Tuple> scan((j, c) -> {
             if (j instanceof Jedis) {
                 return ((Jedis) j).zscan(key, c);
@@ -328,7 +331,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         }, ScanResult::getStringCursor, "0").stream();
     }
 
+    @SuppressWarnings("RedundantTypeArguments")
     public Stream<String> sscan(String key) {
+        // javac cannot infer types...
         return this.<String, String> scan((j, c) -> {
             if (j instanceof Jedis) {
                 return ((Jedis) j).sscan(key, c);
@@ -368,9 +373,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         }
     }
 
-    private void stopWatchStop(Object obj, String op, Throwable e) {
+    private void stopWatchStop(Object obj, HostAndPort hostAndPort, String op, Throwable e) {
         if (stopWatchStop != null) {
-            stopWatchStop.consume(obj, op, e);
+            stopWatchStop.accept(new StopTheWatch<>(obj, hostAndPort, op, e));
         }
     }
 
@@ -378,42 +383,87 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
         private Supplier<Object> poolFactory;
         private BiConsumer<O, Throwable> exceptionHandler;
-        private int pipelinePartitonSize;
+        private int pipelinePartitionSize;
 
         private Supplier<Object> stopWatchStart;
-        private TriConsumer<Object, String, Throwable> stopWatchStop;
+        private Consumer<StopTheWatch<Object>> stopWatchStop;
 
         private Class<?> jedisType;
         private Class<?> binaryJedisType;
 
-        public Builder<P, J, O> withExceptionHandler(BiConsumer<O, Throwable> exceptionHandler) {
-            this.exceptionHandler = exceptionHandler;
+        public Builder<P, J, O>
+                withExceptionHandler(ThrowableBiConsumer<O, Throwable, Exception> handler) {
+            checkNotNull(handler);
+            this.exceptionHandler = (t, e) -> {
+                try {
+                    handler.accept(t, e);
+                } catch (Throwable ex) {
+                    logger.error("", ex);
+                }
+            };
             return this;
         }
 
         public Builder<P, J, O> withPipelinePartitionSize(int size) {
-            this.pipelinePartitonSize = size;
+            this.pipelinePartitionSize = size;
             return this;
         }
 
+        @SuppressWarnings("unchecked")
         public <T> Builder<P, J, O> enableProfiler(Supplier<T> stopWatchSupplier,
-                TriConsumer<T, String, Throwable> stopTheWatch) {
+                Consumer<StopTheWatch<T>> stopTheWatch) {
             this.stopWatchStart = (Supplier<Object>) stopWatchSupplier;
-            this.stopWatchStop = (TriConsumer<Object, String, Throwable>) stopTheWatch;
+            this.stopWatchStop = (Consumer) stopTheWatch;
             return this;
         }
 
+        @SuppressWarnings("unchecked")
         public JedisHelper<P, J> build() {
             ensure();
             return new JedisHelper<>(poolFactory, (BiConsumer<Object, Throwable>) exceptionHandler,
-                    pipelinePartitonSize, jedisType, binaryJedisType, stopWatchStart,
+                    pipelinePartitionSize, jedisType, binaryJedisType, stopWatchStart,
                     stopWatchStop);
         }
 
         private void ensure() {
-            if (pipelinePartitonSize <= 0) {
-                pipelinePartitonSize = PARTITION_SIZE;
+            if (pipelinePartitionSize <= 0) {
+                pipelinePartitionSize = PARTITION_SIZE;
             }
+            if (exceptionHandler == null) {
+                exceptionHandler = (t, e) -> {};
+            }
+        }
+    }
+
+    public static final class StopTheWatch<T> {
+
+        private final T object;
+        private final String method;
+        private final HostAndPort hostAndPort;
+        private final Throwable exception;
+
+        private StopTheWatch(T object, HostAndPort hostAndPort, String method,
+                Throwable exception) {
+            this.object = object;
+            this.method = method;
+            this.hostAndPort = hostAndPort;
+            this.exception = exception;
+        }
+
+        public T getObject() {
+            return object;
+        }
+
+        public String getMethod() {
+            return method;
+        }
+
+        public HostAndPort getHostAndPort() {
+            return hostAndPort;
+        }
+
+        public Throwable getException() {
+            return exception;
         }
     }
 
@@ -422,19 +472,17 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             Object stopWatch = stopWatchStart();
-            String jedisInfo = null;
+            HostAndPort jedisInfo = null;
             Object pool = poolFactory.get();
             try (J jedis = getJedis(pool)) {
                 jedisInfo = getJedisInfo(jedis);
                 Object result = method.invoke(jedis, args);
-                stopWatchStop(stopWatch, method.getName(), null);
+                stopWatchStop(stopWatch, jedisInfo, method.getName(), null);
                 return result;
-            } catch (Throwable e) {
-                e = getRootCause(e);
-                exceptionHandler.accept(pool, e);
-                logger.error("fail to exec jedis command, pool:{}, cmd:{}, args:{}", jedisInfo,
-                        method, Arrays.toString(args), e);
-                stopWatchStop(stopWatch, method.getName(), e);
+            } catch (InvocationTargetException e) {
+                Throwable targetException = e.getTargetException();
+                exceptionHandler.accept(pool, targetException);
+                stopWatchStop(stopWatch, jedisInfo, method.getName(), targetException);
                 throw e;
             }
         }
