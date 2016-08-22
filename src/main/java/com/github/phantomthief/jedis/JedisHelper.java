@@ -479,10 +479,15 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 Object result = method.invoke(jedis, args);
                 stopWatchStop(stopWatch, jedisInfo, method.getName(), null);
                 return result;
-            } catch (InvocationTargetException e) {
-                Throwable targetException = e.getTargetException();
-                exceptionHandler.accept(pool, targetException);
-                stopWatchStop(stopWatch, jedisInfo, method.getName(), targetException);
+            } catch (Throwable e) {
+                Throwable exception;
+                if (e instanceof InvocationTargetException) {
+                    exception = ((InvocationTargetException) e).getTargetException();
+                } else {
+                    exception = e;
+                }
+                exceptionHandler.accept(pool, exception);
+                stopWatchStop(stopWatch, jedisInfo, method.getName(), exception);
                 throw e;
             }
         }
