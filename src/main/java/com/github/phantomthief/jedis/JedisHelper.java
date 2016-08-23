@@ -3,6 +3,7 @@
  */
 package com.github.phantomthief.jedis;
 
+import static com.github.phantomthief.util.MoreSuppliers.lazy;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Throwables.propagate;
 import static com.google.common.collect.Iterables.partition;
@@ -82,6 +83,11 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
     private final Class<?> jedisType;
     private final Class<?> binaryJedisType;
+
+    private final Supplier<BasicCommands> basicCommandsSupplier = lazy(this::getBasic0);
+    private final Supplier<JedisCommands> jedisCommandsSupplier = lazy(this::get0);
+    private final Supplier<BinaryJedisCommands> binaryJedisCommandsSupplier = lazy(
+            this::getBinary0);
 
     private JedisHelper(Supplier<Object> poolFactory, //
             BiConsumer<Object, Throwable> handler, //
@@ -173,16 +179,28 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     public BasicCommands getBasic() {
+        return basicCommandsSupplier.get();
+    }
+
+    private BasicCommands getBasic0() {
         return (BasicCommands) newProxyInstance(jedisType.getClassLoader(),
                 jedisType.getInterfaces(), new PoolableJedisCommands());
     }
 
     public JedisCommands get() {
+        return jedisCommandsSupplier.get();
+    }
+
+    private JedisCommands get0() {
         return (JedisCommands) newProxyInstance(jedisType.getClassLoader(),
                 jedisType.getInterfaces(), new PoolableJedisCommands());
     }
 
     public BinaryJedisCommands getBinary() {
+        return binaryJedisCommandsSupplier.get();
+    }
+
+    private BinaryJedisCommands getBinary0() {
         return (BinaryJedisCommands) newProxyInstance(binaryJedisType.getClassLoader(),
                 binaryJedisType.getInterfaces(), new PoolableJedisCommands());
     }
