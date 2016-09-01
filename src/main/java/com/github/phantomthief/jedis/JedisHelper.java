@@ -323,17 +323,23 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
     @SuppressWarnings("RedundantTypeArguments")
     public Stream<Entry<String, String>> hscan(String key) {
+        return hscan(key, new ScanParams());
+    }
+
+    @SuppressWarnings("RedundantTypeArguments")
+    public Stream<Entry<String, String>> hscan(String key, ScanParams params) {
         // javac cannot infer types...
         return this.<String, Entry<String, String>> scan((j, c) -> {
             if (j instanceof Jedis) {
-                return ((Jedis) j).hscan(key, c);
+                return ((Jedis) j).hscan(key, c, params);
             } else if (j instanceof ShardedJedis) {
-                return ((ShardedJedis) j).hscan(key, c);
+                return ((ShardedJedis) j).hscan(key, c, params);
             } else {
                 throw new UnsupportedOperationException();
             }
         }, ScanResult::getStringCursor, "0").stream();
     }
+
 
     @SuppressWarnings("RedundantTypeArguments")
     public Stream<Tuple> zscan(String key) {
