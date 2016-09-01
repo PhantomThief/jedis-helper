@@ -321,42 +321,55 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         }, ScanResult::getStringCursor, "0").stream();
     }
 
-    @SuppressWarnings("RedundantTypeArguments")
     public Stream<Entry<String, String>> hscan(String key) {
+        return hscan(key, new ScanParams());
+    }
+
+    @SuppressWarnings("RedundantTypeArguments")
+    public Stream<Entry<String, String>> hscan(String key, ScanParams params) {
         // javac cannot infer types...
         return this.<String, Entry<String, String>> scan((j, c) -> {
             if (j instanceof Jedis) {
-                return ((Jedis) j).hscan(key, c);
+                return ((Jedis) j).hscan(key, c, params);
             } else if (j instanceof ShardedJedis) {
-                return ((ShardedJedis) j).hscan(key, c);
+                return ((ShardedJedis) j).hscan(key, c, params);
             } else {
                 throw new UnsupportedOperationException();
             }
         }, ScanResult::getStringCursor, "0").stream();
     }
 
-    @SuppressWarnings("RedundantTypeArguments")
+
     public Stream<Tuple> zscan(String key) {
+        return zscan(key, new ScanParams());
+    }
+
+    @SuppressWarnings("RedundantTypeArguments")
+    public Stream<Tuple> zscan(String key, ScanParams params) {
         // javac cannot infer types...
         return this.<String, Tuple> scan((j, c) -> {
             if (j instanceof Jedis) {
-                return ((Jedis) j).zscan(key, c);
+                return ((Jedis) j).zscan(key, c, params);
             } else if (j instanceof ShardedJedis) {
-                return ((ShardedJedis) j).zscan(key, c);
+                return ((ShardedJedis) j).zscan(key, c, params);
             } else {
                 throw new UnsupportedOperationException();
             }
         }, ScanResult::getStringCursor, "0").stream();
     }
 
-    @SuppressWarnings("RedundantTypeArguments")
     public Stream<String> sscan(String key) {
+        return sscan(key, new ScanParams());
+    }
+
+    @SuppressWarnings("RedundantTypeArguments")
+    public Stream<String> sscan(String key, ScanParams params) {
         // javac cannot infer types...
         return this.<String, String> scan((j, c) -> {
             if (j instanceof Jedis) {
-                return ((Jedis) j).sscan(key, c);
+                return ((Jedis) j).sscan(key, c, params);
             } else if (j instanceof ShardedJedis) {
-                return ((ShardedJedis) j).sscan(key, c);
+                return ((ShardedJedis) j).sscan(key, c, params);
             } else {
                 throw new UnsupportedOperationException();
             }
