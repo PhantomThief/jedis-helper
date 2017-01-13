@@ -129,8 +129,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     }
 
     @SuppressWarnings("unchecked")
-    public static Builder<Pipeline, Jedis, JedisPool> newBuilder(Supplier<JedisPool> poolFactory) {
-        Builder<Pipeline, Jedis, JedisPool> builder = new Builder<>();
+    public static <T extends JedisPool> Builder<Pipeline, Jedis, T>
+            newBuilder(Supplier<T> poolFactory) {
+        Builder<Pipeline, Jedis, T> builder = new Builder<>();
         builder.poolFactory = (Supplier) poolFactory;
         builder.jedisType = Jedis.class;
         builder.binaryJedisType = BinaryJedis.class;
