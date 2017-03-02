@@ -144,6 +144,11 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
     public <K, V, T> Map<K, T> pipeline(Iterable<K> keys, BiFunction<P, K, Response<V>> function,
             Function<V, T> decoder) {
+        return pipeline(keys, function, decoder, true);
+    }
+
+    public <K, V, T> Map<K, T> pipeline(Iterable<K> keys, BiFunction<P, K, Response<V>> function,
+            Function<V, T> decoder, boolean includeNullValue) {
         int size;
         if (keys != null && keys instanceof Collection) {
             size = ((Collection<K>) keys).size();
@@ -169,7 +174,13 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                     }
                     syncPipeline(pipeline);
                     stopWatchStop(stopWatch, jedisInfo, PIPELINE, null);
-                    thisMap.forEach((key, value) -> result.put(key, decoder.apply(value.get())));
+                    thisMap.forEach((key, value) -> {
+                        V rawValue = value.get();
+                        if (rawValue != null || includeNullValue) {
+                            T apply = decoder.apply(rawValue);
+                            result.put(key, apply);
+                        }
+                    });
                 } catch (Throwable e) {
                     exceptionHandler.accept(pool, e);
                     stopWatchStop(stopWatch, jedisInfo, PIPELINE, e);
