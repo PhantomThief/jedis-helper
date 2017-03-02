@@ -561,7 +561,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 if (opListeners != null) {
                     for (OpListener<Object> opListener : opListeners) {
                         try {
-                            opListener.onSuccess(jedis, requestTime, method, args);
+                            opListener.onSuccess(pool, requestTime, method, args);
                         } catch (Throwable e) {
                             logger.error("", e);
                         }
