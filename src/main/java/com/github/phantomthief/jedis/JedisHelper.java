@@ -92,7 +92,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             this::getBinary0);
 
     private final Function<Object, P> pipelineDecoration;
-    private final TriConsumer<Long, Method, Object[]> opListener;
+    private final List<TriConsumer<Long, Method, Object[]>> opListeners;
 
     private JedisHelper(Supplier<Object> poolFactory, //
             BiConsumer<Object, Throwable> handler, //
@@ -102,7 +102,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             Supplier<Object> stopWatchStart, //
             Consumer<StopTheWatch<Object>> stopWatchStop, // 
             Function<Object, P> pipelineDecoration, //
-            TriConsumer<Long, Method, Object[]> opListener) {
+            List<TriConsumer<Long, Method, Object[]>> opListeners) {
         this.poolFactory = poolFactory;
         this.exceptionHandler = handler;
         this.pipelinePartitionSize = pipelinePartitionSize;
@@ -111,7 +111,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         this.stopWatchStart = stopWatchStart;
         this.stopWatchStop = stopWatchStop;
         this.pipelineDecoration = pipelineDecoration;
-        this.opListener = opListener;
+        this.opListeners = opListeners;
     }
 
     public static String getShardBitKey(long bit, String keyPrefix, int keyHashRange) {
@@ -465,7 +465,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         private Class<?> binaryJedisType;
 
         private Function<Object, P> pipelineDecoration;
-        private TriConsumer<Long, Method, Object[]> opListener;
+        private List<TriConsumer<Long, Method, Object[]>> opListeners = new ArrayList<>();
 
         public Builder<P, J, O>
                 withExceptionHandler(ThrowableBiConsumer<O, Throwable, Exception> handler) {
@@ -485,8 +485,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             return this;
         }
 
-        public Builder<P, J, O> opListener(TriConsumer<Long, Method, Object[]> op) {
-            this.opListener = op;
+        public Builder<P, J, O> addOpListener(TriConsumer<Long, Method, Object[]> op) {
+            this.opListeners.add(op);
             return this;
         }
 
@@ -503,7 +503,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             ensure();
             return new JedisHelper<>(poolFactory, (BiConsumer<Object, Throwable>) exceptionHandler,
                     pipelinePartitionSize, jedisType, binaryJedisType, stopWatchStart,
-                    stopWatchStop, pipelineDecoration, opListener);
+                    stopWatchStop, pipelineDecoration, opListeners);
         }
 
         private void ensure() {
@@ -559,8 +559,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 jedisInfo = getJedisInfo(jedis);
                 long requestTime = currentTimeMillis();
                 Object result = method.invoke(jedis, args);
-                if (opListener != null) {
-                    opListener.consume(requestTime, method, args);
+                if (opListeners != null) {
+                    opListeners
+                            .forEach(opListener -> opListener.consume(requestTime, method, args));
                 }
                 stopWatchStop(stopWatch, jedisInfo, method.getName(), null);
                 return result;
