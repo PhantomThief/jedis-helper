@@ -36,7 +36,6 @@ import org.slf4j.LoggerFactory;
 
 import com.github.phantomthief.util.CursorIteratorEx;
 import com.github.phantomthief.util.ThrowableBiConsumer;
-import com.github.phantomthief.util.TriConsumer;
 import com.google.common.net.HostAndPort;
 
 import redis.clients.jedis.BasicCommands;
@@ -92,7 +91,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             this::getBinary0);
 
     private final Function<Object, P> pipelineDecoration;
-    private final List<TriConsumer<Long, Method, Object[]>> opListeners;
+    private final List<OpListener<J>> opListeners;
 
     private JedisHelper(Supplier<Object> poolFactory, //
             BiConsumer<Object, Throwable> handler, //
@@ -102,7 +101,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             Supplier<Object> stopWatchStart, //
             Consumer<StopTheWatch<Object>> stopWatchStop, // 
             Function<Object, P> pipelineDecoration, //
-            List<TriConsumer<Long, Method, Object[]>> opListeners) {
+            List<OpListener<J>> opListeners) {
         this.poolFactory = poolFactory;
         this.exceptionHandler = handler;
         this.pipelinePartitionSize = pipelinePartitionSize;
@@ -465,7 +464,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         private Class<?> binaryJedisType;
 
         private Function<Object, P> pipelineDecoration;
-        private List<TriConsumer<Long, Method, Object[]>> opListeners = new ArrayList<>();
+        private List<OpListener<J>> opListeners = new ArrayList<>();
 
         public Builder<P, J, O>
                 withExceptionHandler(ThrowableBiConsumer<O, Throwable, Exception> handler) {
@@ -485,7 +484,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             return this;
         }
 
-        public Builder<P, J, O> addOpListener(TriConsumer<Long, Method, Object[]> op) {
+        public Builder<P, J, O> addOpListener(OpListener<J> op) {
             this.opListeners.add(op);
             return this;
         }
@@ -560,8 +559,13 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 long requestTime = currentTimeMillis();
                 Object result = method.invoke(jedis, args);
                 if (opListeners != null) {
-                    opListeners
-                            .forEach(opListener -> opListener.consume(requestTime, method, args));
+                    for (OpListener<J> opListener : opListeners) {
+                        try {
+                            opListener.onSuccess(jedis, requestTime, method, args);
+                        } catch (Throwable e) {
+                            logger.error("", e);
+                        }
+                    }
                 }
                 stopWatchStop(stopWatch, jedisInfo, method.getName(), null);
                 return result;
