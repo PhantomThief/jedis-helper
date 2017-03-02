@@ -8,6 +8,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Throwables.propagate;
 import static com.google.common.collect.Iterables.partition;
 import static com.google.common.collect.Maps.newHashMapWithExpectedSize;
+import static java.lang.System.currentTimeMillis;
 import static java.lang.reflect.Proxy.newProxyInstance;
 import static java.util.Collections.singleton;
 import static java.util.function.Function.identity;
@@ -35,6 +36,7 @@ import org.slf4j.LoggerFactory;
 
 import com.github.phantomthief.util.CursorIteratorEx;
 import com.github.phantomthief.util.ThrowableBiConsumer;
+import com.github.phantomthief.util.TriConsumer;
 import com.google.common.net.HostAndPort;
 
 import redis.clients.jedis.BasicCommands;
@@ -89,13 +91,18 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     private final Supplier<BinaryJedisCommands> binaryJedisCommandsSupplier = lazy(
             this::getBinary0);
 
+    private final Function<Object, P> pipelineDecoration;
+    private final TriConsumer<Long, Method, Object[]> opListener;
+
     private JedisHelper(Supplier<Object> poolFactory, //
             BiConsumer<Object, Throwable> handler, //
             int pipelinePartitionSize, //
             Class<?> jedisType, //
             Class<?> binaryJedisType, //
             Supplier<Object> stopWatchStart, //
-            Consumer<StopTheWatch<Object>> stopWatchStop) {
+            Consumer<StopTheWatch<Object>> stopWatchStop, // 
+            Function<Object, P> pipelineDecoration, //
+            TriConsumer<Long, Method, Object[]> opListener) {
         this.poolFactory = poolFactory;
         this.exceptionHandler = handler;
         this.pipelinePartitionSize = pipelinePartitionSize;
@@ -103,6 +110,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         this.binaryJedisType = binaryJedisType;
         this.stopWatchStart = stopWatchStart;
         this.stopWatchStop = stopWatchStop;
+        this.pipelineDecoration = pipelineDecoration;
+        this.opListener = opListener;
     }
 
     public static String getShardBitKey(long bit, String keyPrefix, int keyHashRange) {
@@ -136,6 +145,17 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         builder.jedisType = Jedis.class;
         builder.binaryJedisType = BinaryJedis.class;
         return builder;
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T extends JedisPool, P extends Pipeline> Builder<P, Jedis, T>
+            newBuilder(Supplier<T> poolFactory, Function<Pipeline, P> pipelineDecoration) {
+        Builder<Pipeline, Jedis, T> builder = new Builder<>();
+        builder.poolFactory = (Supplier) poolFactory;
+        builder.jedisType = Jedis.class;
+        builder.binaryJedisType = BinaryJedis.class;
+        builder.pipelineDecoration = (Function) pipelineDecoration;
+        return (Builder<P, Jedis, T>) builder;
     }
 
     public <K, V> Map<K, V> pipeline(Iterable<K> keys, BiFunction<P, K, Response<V>> function) {
@@ -245,9 +265,19 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     @SuppressWarnings("unchecked")
     private P pipeline(J jedis) {
         if (jedis instanceof Jedis) {
-            return (P) ((Jedis) jedis).pipelined();
+            Pipeline pipelined = ((Jedis) jedis).pipelined();
+            if (pipelineDecoration != null) {
+                return pipelineDecoration.apply(pipelined);
+            } else {
+                return (P) pipelined;
+            }
         } else if (jedis instanceof ShardedJedis) {
-            return (P) ((ShardedJedis) jedis).pipelined();
+            ShardedJedisPipeline pipelined = ((ShardedJedis) jedis).pipelined();
+            if (pipelineDecoration != null) {
+                return pipelineDecoration.apply(pipelined);
+            } else {
+                return (P) pipelined;
+            }
         } else {
             throw new IllegalArgumentException("invalid jedis:" + jedis);
         }
@@ -434,6 +464,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         private Class<?> jedisType;
         private Class<?> binaryJedisType;
 
+        private Function<Object, P> pipelineDecoration;
+        private TriConsumer<Long, Method, Object[]> opListener;
+
         public Builder<P, J, O>
                 withExceptionHandler(ThrowableBiConsumer<O, Throwable, Exception> handler) {
             checkNotNull(handler);
@@ -452,6 +485,11 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             return this;
         }
 
+        public Builder<P, J, O> opListener(TriConsumer<Long, Method, Object[]> op) {
+            this.opListener = op;
+            return this;
+        }
+
         @SuppressWarnings("unchecked")
         public <T> Builder<P, J, O> enableProfiler(Supplier<T> stopWatchSupplier,
                 Consumer<StopTheWatch<T>> stopTheWatch) {
@@ -465,7 +503,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             ensure();
             return new JedisHelper<>(poolFactory, (BiConsumer<Object, Throwable>) exceptionHandler,
                     pipelinePartitionSize, jedisType, binaryJedisType, stopWatchStart,
-                    stopWatchStop);
+                    stopWatchStop, pipelineDecoration, opListener);
         }
 
         private void ensure() {
@@ -519,7 +557,11 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             Object pool = poolFactory.get();
             try (J jedis = getJedis(pool)) {
                 jedisInfo = getJedisInfo(jedis);
+                long requestTime = currentTimeMillis();
                 Object result = method.invoke(jedis, args);
+                if (opListener != null) {
+                    opListener.consume(requestTime, method, args);
+                }
                 stopWatchStop(stopWatch, jedisInfo, method.getName(), null);
                 return result;
             } catch (Throwable e) {
