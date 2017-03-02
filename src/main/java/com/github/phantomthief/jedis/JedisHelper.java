@@ -91,7 +91,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             this::getBinary0);
 
     private final Function<Object, P> pipelineDecoration;
-    private final List<OpListener<J>> opListeners;
+    private final List<OpListener<Object>> opListeners;
 
     private JedisHelper(Supplier<Object> poolFactory, //
             BiConsumer<Object, Throwable> handler, //
@@ -101,7 +101,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             Supplier<Object> stopWatchStart, //
             Consumer<StopTheWatch<Object>> stopWatchStop, // 
             Function<Object, P> pipelineDecoration, //
-            List<OpListener<J>> opListeners) {
+            List<OpListener<Object>> opListeners) {
         this.poolFactory = poolFactory;
         this.exceptionHandler = handler;
         this.pipelinePartitionSize = pipelinePartitionSize;
@@ -464,7 +464,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         private Class<?> binaryJedisType;
 
         private Function<Object, P> pipelineDecoration;
-        private List<OpListener<J>> opListeners = new ArrayList<>();
+        private List<OpListener<O>> opListeners = new ArrayList<>();
 
         public Builder<P, J, O>
                 withExceptionHandler(ThrowableBiConsumer<O, Throwable, Exception> handler) {
@@ -484,7 +484,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             return this;
         }
 
-        public Builder<P, J, O> addOpListener(OpListener<J> op) {
+        public Builder<P, J, O> addOpListener(OpListener<O> op) {
             this.opListeners.add(op);
             return this;
         }
@@ -502,7 +502,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             ensure();
             return new JedisHelper<>(poolFactory, (BiConsumer<Object, Throwable>) exceptionHandler,
                     pipelinePartitionSize, jedisType, binaryJedisType, stopWatchStart,
-                    stopWatchStop, pipelineDecoration, opListeners);
+                    stopWatchStop, pipelineDecoration, (List) opListeners);
         }
 
         private void ensure() {
@@ -559,7 +559,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 long requestTime = currentTimeMillis();
                 Object result = method.invoke(jedis, args);
                 if (opListeners != null) {
-                    for (OpListener<J> opListener : opListeners) {
+                    for (OpListener<Object> opListener : opListeners) {
                         try {
                             opListener.onSuccess(jedis, requestTime, method, args);
                         } catch (Throwable e) {
