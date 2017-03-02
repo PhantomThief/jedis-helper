@@ -175,8 +175,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                     syncPipeline(pipeline);
                     stopWatchStop(stopWatch, jedisInfo, PIPELINE, null);
                     thisMap.forEach((key, value) -> {
-                        T apply = decoder.apply(value.get());
-                        if (apply != null || includeNullValue) {
+                        V rawValue = value.get();
+                        if (rawValue != null || includeNullValue) {
+                            T apply = decoder.apply(rawValue);
                             result.put(key, apply);
                         }
                     });
