@@ -554,6 +554,11 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
             Object stopWatch = stopWatchStart();
             HostAndPort jedisInfo = null;
             Object pool = poolFactory.get();
+            if (pool == null) {
+                RuntimeException runtimeException = new RuntimeException("no available resource.");
+                exceptionHandler.accept(null, runtimeException);
+                throw runtimeException;
+            }
             try (J jedis = getJedis(pool)) {
                 jedisInfo = getJedisInfo(jedis);
                 long requestTime = currentTimeMillis();
