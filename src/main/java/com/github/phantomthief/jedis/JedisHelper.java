@@ -4,8 +4,6 @@
 package com.github.phantomthief.jedis;
 
 import static com.github.phantomthief.util.MoreSuppliers.lazy;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Throwables.propagate;
 import static com.google.common.collect.Iterables.partition;
 import static com.google.common.collect.Maps.newHashMapWithExpectedSize;
 import static java.lang.System.currentTimeMillis;
@@ -14,6 +12,7 @@ import static java.util.Collections.singleton;
 import static java.util.function.Function.identity;
 
 import java.io.Closeable;
+import java.io.IOException;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -24,9 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -34,8 +31,8 @@ import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.github.phantomthief.jedis.exception.NoAvailablePoolException;
 import com.github.phantomthief.util.CursorIteratorEx;
-import com.github.phantomthief.util.ThrowableBiConsumer;
 import com.google.common.net.HostAndPort;
 
 import redis.clients.jedis.BasicCommands;
@@ -73,14 +70,9 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     public static final String SECONDS = "EX";
     public static final String MILLISECONDS = "PX";
 
-    private static final String PIPELINE = "pipeline";
     private final static int PARTITION_SIZE = 100;
     private final Supplier<Object> poolFactory;
-    private final BiConsumer<Object, Throwable> exceptionHandler;
     private final int pipelinePartitionSize;
-
-    private final Supplier<Object> stopWatchStart;
-    private final Consumer<StopTheWatch<Object>> stopWatchStop;
 
     private final Class<?> jedisType;
     private final Class<?> binaryJedisType;
@@ -94,21 +86,15 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     private final List<OpListener<Object>> opListeners;
 
     private JedisHelper(Supplier<Object> poolFactory, //
-            BiConsumer<Object, Throwable> handler, //
             int pipelinePartitionSize, //
             Class<?> jedisType, //
             Class<?> binaryJedisType, //
-            Supplier<Object> stopWatchStart, //
-            Consumer<StopTheWatch<Object>> stopWatchStop, // 
             Function<Object, P> pipelineDecoration, //
             List<OpListener<Object>> opListeners) {
         this.poolFactory = poolFactory;
-        this.exceptionHandler = handler;
         this.pipelinePartitionSize = pipelinePartitionSize;
         this.jedisType = jedisType;
         this.binaryJedisType = binaryJedisType;
-        this.stopWatchStart = stopWatchStart;
-        this.stopWatchStop = stopWatchStop;
         this.pipelineDecoration = pipelineDecoration;
         this.opListeners = opListeners;
     }
@@ -177,12 +163,12 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         Map<K, T> result = newHashMapWithExpectedSize(size);
         if (keys != null) {
             Iterable<List<K>> partition = partition(keys, pipelinePartitionSize);
+
             for (List<K> list : partition) {
                 Object pool = poolFactory.get();
                 HostAndPort jedisInfo = null;
-                Object stopWatch = stopWatchStart();
+                long start = currentTimeMillis();
                 try (J jedis = getJedis(pool)) {
-                    jedisInfo = getJedisInfo(jedis);
                     P pipeline = pipeline(jedis);
                     Map<K, Response<V>> thisMap = new HashMap<>(list.size());
                     for (K key : list) {
@@ -192,7 +178,14 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                         }
                     }
                     syncPipeline(pipeline);
-                    stopWatchStop(stopWatch, jedisInfo, PIPELINE, null);
+                    long cost = currentTimeMillis() - start;
+                    for (OpListener<Object> opListener : opListeners) {
+                        try {
+                            opListener.onComplete(pool, start, null, null, cost, null);
+                        } catch (Throwable e) {
+                            logger.error("", e);
+                        }
+                    }
                     thisMap.forEach((key, value) -> {
                         V rawValue = value.get();
                         if (rawValue != null || includeNullValue) {
@@ -201,8 +194,14 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                         }
                     });
                 } catch (Throwable e) {
-                    exceptionHandler.accept(pool, e);
-                    stopWatchStop(stopWatch, jedisInfo, PIPELINE, e);
+                    long cost = currentTimeMillis() - start;
+                    for (OpListener<Object> opListener : opListeners) {
+                        try {
+                            opListener.onComplete(pool, start, null, null, cost, e);
+                        } catch (Throwable e2) {
+                            logger.error("", e2);
+                        }
+                    }
                 }
             }
         }
@@ -242,14 +241,6 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         } else if (pipeline instanceof ShardedJedisPipeline) {
             ((ShardedJedisPipeline) pipeline).sync();
         }
-    }
-
-    private HostAndPort getJedisInfo(Object obj) {
-        if (obj instanceof Jedis) {
-            Jedis jedis = (Jedis) obj;
-            return HostAndPort.fromParts(jedis.getClient().getHost(), jedis.getClient().getPort());
-        }
-        return null;
     }
 
     @SuppressWarnings("unchecked")
@@ -425,9 +416,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                     Object pool = poolFactory.get();
                     try (J jedis = getJedis(pool)) {
                         return scanFunction.apply(jedis, cursor);
-                    } catch (Throwable e) {
-                        exceptionHandler.accept(pool, e);
-                        throw propagate(e);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
                     }
                 }) //
                 .withCursorExtractor(cursorExtractor) //
@@ -437,47 +427,16 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 .build();
     }
 
-    private Object stopWatchStart() {
-        if (stopWatchStart != null) {
-            return stopWatchStart.get();
-        } else {
-            return null;
-        }
-    }
-
-    private void stopWatchStop(Object obj, HostAndPort hostAndPort, String op, Throwable e) {
-        if (stopWatchStop != null) {
-            stopWatchStop.accept(new StopTheWatch<>(obj, hostAndPort, op, e));
-        }
-    }
-
     public static final class Builder<P extends PipelineBase, J extends Closeable, O> {
 
         private Supplier<Object> poolFactory;
-        private BiConsumer<O, Throwable> exceptionHandler;
         private int pipelinePartitionSize;
-
-        private Supplier<Object> stopWatchStart;
-        private Consumer<StopTheWatch<Object>> stopWatchStop;
 
         private Class<?> jedisType;
         private Class<?> binaryJedisType;
 
         private Function<Object, P> pipelineDecoration;
         private List<OpListener<O>> opListeners = new ArrayList<>();
-
-        public Builder<P, J, O>
-                withExceptionHandler(ThrowableBiConsumer<O, Throwable, Exception> handler) {
-            checkNotNull(handler);
-            this.exceptionHandler = (t, e) -> {
-                try {
-                    handler.accept(t, e);
-                } catch (Throwable ex) {
-                    logger.error("", ex);
-                }
-            };
-            return this;
-        }
 
         public Builder<P, J, O> withPipelinePartitionSize(int size) {
             this.pipelinePartitionSize = size;
@@ -490,60 +449,16 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         }
 
         @SuppressWarnings("unchecked")
-        public <T> Builder<P, J, O> enableProfiler(Supplier<T> stopWatchSupplier,
-                Consumer<StopTheWatch<T>> stopTheWatch) {
-            this.stopWatchStart = (Supplier<Object>) stopWatchSupplier;
-            this.stopWatchStop = (Consumer) stopTheWatch;
-            return this;
-        }
-
-        @SuppressWarnings("unchecked")
         public JedisHelper<P, J> build() {
             ensure();
-            return new JedisHelper<>(poolFactory, (BiConsumer<Object, Throwable>) exceptionHandler,
-                    pipelinePartitionSize, jedisType, binaryJedisType, stopWatchStart,
-                    stopWatchStop, pipelineDecoration, (List) opListeners);
+            return new JedisHelper<>(poolFactory, pipelinePartitionSize, jedisType, binaryJedisType,
+                    pipelineDecoration, (List) opListeners);
         }
 
         private void ensure() {
             if (pipelinePartitionSize <= 0) {
                 pipelinePartitionSize = PARTITION_SIZE;
             }
-            if (exceptionHandler == null) {
-                exceptionHandler = (t, e) -> {};
-            }
-        }
-    }
-
-    public static final class StopTheWatch<T> {
-
-        private final T object;
-        private final String method;
-        private final HostAndPort hostAndPort;
-        private final Throwable exception;
-
-        private StopTheWatch(T object, HostAndPort hostAndPort, String method,
-                Throwable exception) {
-            this.object = object;
-            this.method = method;
-            this.hostAndPort = hostAndPort;
-            this.exception = exception;
-        }
-
-        public T getObject() {
-            return object;
-        }
-
-        public String getMethod() {
-            return method;
-        }
-
-        public HostAndPort getHostAndPort() {
-            return hostAndPort;
-        }
-
-        public Throwable getException() {
-            return exception;
         }
     }
 
@@ -551,28 +466,30 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-            Object stopWatch = stopWatchStart();
+            long start = currentTimeMillis();
             HostAndPort jedisInfo = null;
             Object pool = poolFactory.get();
             if (pool == null) {
-                RuntimeException runtimeException = new RuntimeException("no available resource.");
-                exceptionHandler.accept(null, runtimeException);
-                throw runtimeException;
+                NoAvailablePoolException exception = new NoAvailablePoolException();
+                long cost = currentTimeMillis() - start;
+                for (OpListener<Object> opListener : opListeners) {
+                    opListener.onComplete(null, start, method, args, cost, exception);
+                }
+                throw exception;
             }
             try (J jedis = getJedis(pool)) {
-                jedisInfo = getJedisInfo(jedis);
                 long requestTime = currentTimeMillis();
                 Object result = method.invoke(jedis, args);
                 if (opListeners != null) {
+                    long cost = currentTimeMillis() - start;
                     for (OpListener<Object> opListener : opListeners) {
                         try {
-                            opListener.onSuccess(pool, requestTime, method, args);
+                            opListener.onComplete(pool, requestTime, method, args, cost, null);
                         } catch (Throwable e) {
                             logger.error("", e);
                         }
                     }
                 }
-                stopWatchStop(stopWatch, jedisInfo, method.getName(), null);
                 return result;
             } catch (Throwable e) {
                 Throwable exception;
@@ -581,8 +498,14 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 } else {
                     exception = e;
                 }
-                exceptionHandler.accept(pool, exception);
-                stopWatchStop(stopWatch, jedisInfo, method.getName(), exception);
+                long cost = currentTimeMillis() - start;
+                for (OpListener<Object> opListener : opListeners) {
+                    try {
+                        opListener.onComplete(pool, start, method, args, cost, exception);
+                    } catch (Throwable e2) {
+                        logger.error("", e2);
+                    }
+                }
                 throw e;
             }
         }
