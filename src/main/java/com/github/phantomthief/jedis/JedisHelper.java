@@ -4,6 +4,7 @@
 package com.github.phantomthief.jedis;
 
 import static com.github.phantomthief.util.MoreSuppliers.lazy;
+import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.Iterables.partition;
 import static com.google.common.collect.Maps.newHashMapWithExpectedSize;
 import static java.lang.System.currentTimeMillis;
@@ -33,7 +34,6 @@ import org.slf4j.LoggerFactory;
 
 import com.github.phantomthief.jedis.exception.NoAvailablePoolException;
 import com.github.phantomthief.util.CursorIteratorEx;
-import com.google.common.net.HostAndPort;
 
 import redis.clients.jedis.BasicCommands;
 import redis.clients.jedis.BinaryJedis;
@@ -166,8 +166,8 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
 
             for (List<K> list : partition) {
                 Object pool = poolFactory.get();
-                HostAndPort jedisInfo = null;
                 long start = currentTimeMillis();
+                Throwable t = null;
                 try (J jedis = getJedis(pool)) {
                     P pipeline = pipeline(jedis);
                     Map<K, Response<V>> thisMap = new HashMap<>(list.size());
@@ -178,14 +178,6 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                         }
                     }
                     syncPipeline(pipeline);
-                    long cost = currentTimeMillis() - start;
-                    for (OpListener<Object> opListener : opListeners) {
-                        try {
-                            opListener.onComplete(pool, start, null, null, cost, null);
-                        } catch (Throwable e) {
-                            logger.error("", e);
-                        }
-                    }
                     thisMap.forEach((key, value) -> {
                         V rawValue = value.get();
                         if (rawValue != null || includeNullValue) {
@@ -194,12 +186,14 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                         }
                     });
                 } catch (Throwable e) {
+                    t = e;
+                } finally {
                     long cost = currentTimeMillis() - start;
                     for (OpListener<Object> opListener : opListeners) {
                         try {
-                            opListener.onComplete(pool, start, null, null, cost, e);
-                        } catch (Throwable e2) {
-                            logger.error("", e2);
+                            opListener.onComplete(pool, start, null, null, cost, t);
+                        } catch (Throwable e) {
+                            logger.error("", e);
                         }
                     }
                 }
@@ -444,7 +438,7 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         }
 
         public Builder<P, J, O> addOpListener(OpListener<O> op) {
-            this.opListeners.add(op);
+            this.opListeners.add(checkNotNull(op));
             return this;
         }
 
@@ -467,7 +461,6 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             long start = currentTimeMillis();
-            HostAndPort jedisInfo = null;
             Object pool = poolFactory.get();
             if (pool == null) {
                 NoAvailablePoolException exception = new NoAvailablePoolException();
@@ -477,36 +470,25 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
                 }
                 throw exception;
             }
+            Throwable t = null;
             try (J jedis = getJedis(pool)) {
-                long requestTime = currentTimeMillis();
-                Object result = method.invoke(jedis, args);
-                if (opListeners != null) {
-                    long cost = currentTimeMillis() - start;
-                    for (OpListener<Object> opListener : opListeners) {
-                        try {
-                            opListener.onComplete(pool, requestTime, method, args, cost, null);
-                        } catch (Throwable e) {
-                            logger.error("", e);
-                        }
-                    }
-                }
-                return result;
+                return method.invoke(jedis, args);
             } catch (Throwable e) {
-                Throwable exception;
                 if (e instanceof InvocationTargetException) {
-                    exception = ((InvocationTargetException) e).getTargetException();
+                    t = ((InvocationTargetException) e).getTargetException();
                 } else {
-                    exception = e;
+                    t = e;
                 }
+                throw e;
+            } finally {
                 long cost = currentTimeMillis() - start;
                 for (OpListener<Object> opListener : opListeners) {
                     try {
-                        opListener.onComplete(pool, start, method, args, cost, exception);
-                    } catch (Throwable e2) {
-                        logger.error("", e2);
+                        opListener.onComplete(pool, start, method, args, cost, t);
+                    } catch (Throwable e) {
+                        logger.error("", e);
                     }
                 }
-                throw e;
             }
         }
     }
