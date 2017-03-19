@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -69,8 +70,10 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
     public static final String ALREADY_EXIST = "XX";
     public static final String SECONDS = "EX";
     public static final String MILLISECONDS = "PX";
+    private static final int PARTITION_SIZE = 100;
 
-    private final static int PARTITION_SIZE = 100;
+    private static final Object EMPTY_KEY = new Object();
+
     private final Supplier<Object> poolFactory;
     private final int pipelinePartitionSize;
 
@@ -141,6 +144,17 @@ public class JedisHelper<P extends PipelineBase, J extends Closeable> {
         builder.binaryJedisType = BinaryJedis.class;
         builder.pipelineDecoration = (Function) pipelineDecoration;
         return (Builder<P, Jedis, T>) builder;
+    }
+
+    public void pipeline(Consumer<P> function) {
+        pipeline(p -> {
+            function.accept(p);
+            return null;
+        });
+    }
+
+    public <V> V pipeline(Function<P, Response<V>> function) {
+        return pipeline(singleton(EMPTY_KEY), (p, k) -> function.apply(p)).get(EMPTY_KEY);
     }
 
     public <K, V> Map<K, V> pipeline(Iterable<K> keys, BiFunction<P, K, Response<V>> function) {
