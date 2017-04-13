@@ -3,7 +3,7 @@ package com.github.phantomthief.jedis;
 import java.lang.reflect.Method;
 
 /**
- * @author w.vela <wangtianzhou@kuaishou.com>
+ * @author w.vela
  * Created on 2017-03-02.
  */
 public interface OpListener<P> {
