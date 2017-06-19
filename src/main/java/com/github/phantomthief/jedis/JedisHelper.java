@@ -8,6 +8,7 @@ import static com.github.phantomthief.util.MoreSuppliers.lazy;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.collect.Iterables.partition;
 import static com.google.common.collect.Maps.newHashMapWithExpectedSize;
+import static com.google.common.reflect.Reflection.newProxy;
 import static java.lang.System.currentTimeMillis;
 import static java.lang.reflect.Proxy.newProxyInstance;
 import static java.util.Collections.singleton;
@@ -37,7 +38,7 @@ import org.slf4j.LoggerFactory;
 import com.github.phantomthief.jedis.exception.NoAvailablePoolException;
 import com.github.phantomthief.tuple.TwoTuple;
 import com.github.phantomthief.util.CursorIteratorEx;
-import com.google.common.reflect.Reflection;
+import com.github.phantomthief.util.TriFunction;
 
 import redis.clients.jedis.BasicCommands;
 import redis.clients.jedis.BinaryJedis;
@@ -64,8 +65,6 @@ import redis.clients.util.Pool;
  */
 public class JedisHelper<J extends Closeable> {
 
-    private static final Logger logger = LoggerFactory.getLogger(JedisHelper.class);
-
     public static final long SETNX_KEY_NOT_SET = 0L;
     public static final long SETNX_KEY_SET = 1L;
     public static final int LIMIT_INFINITY = -1;
@@ -75,6 +74,7 @@ public class JedisHelper<J extends Closeable> {
     public static final String ALREADY_EXIST = "XX";
     public static final String SECONDS = "EX";
     public static final String MILLISECONDS = "PX";
+    private static final Logger logger = LoggerFactory.getLogger(JedisHelper.class);
     private static final int PARTITION_SIZE = 100;
 
     private static final Object EMPTY_KEY = new Object();
@@ -90,22 +90,19 @@ public class JedisHelper<J extends Closeable> {
     private final Supplier<BinaryJedisCommands> binaryJedisCommandsSupplier = lazy(
             this::getBinary0);
 
-    private final Function<Object, PipelineBase> pipelineDecoration;
     private final List<OpListener<Object>> opListeners;
-    private final List<PipelineOpListener<Object>> pipelineOpListeners;
+    private final List<PipelineOpListener<Object, Object>> pipelineOpListeners;
 
     private JedisHelper(Supplier<Object> poolFactory, //
             int pipelinePartitionSize, //
             Class<?> jedisType, //
             Class<?> binaryJedisType, //
-            Function<Object, PipelineBase> pipelineDecoration, //
             List<OpListener<Object>> opListeners, //
-            List<PipelineOpListener<Object>> pipelineOpListeners) {
+            List<PipelineOpListener<Object, Object>> pipelineOpListeners) {
         this.poolFactory = poolFactory;
         this.pipelinePartitionSize = pipelinePartitionSize;
         this.jedisType = jedisType;
         this.binaryJedisType = binaryJedisType;
-        this.pipelineDecoration = pipelineDecoration;
         this.opListeners = opListeners;
         this.pipelineOpListeners = pipelineOpListeners;
     }
@@ -142,17 +139,6 @@ public class JedisHelper<J extends Closeable> {
         return builder;
     }
 
-    @SuppressWarnings("unchecked")
-    public static <T extends JedisPool> Builder<Jedis, T> newBuilder(Supplier<T> poolFactory,
-               Function<Pipeline, ? extends PipelineBase> pipelineDecoration) {
-        Builder<Jedis, T> builder = new Builder<>();
-        builder.poolFactory = (Supplier) poolFactory;
-        builder.jedisType = Jedis.class;
-        builder.binaryJedisType = BinaryJedis.class;
-        builder.pipelineDecoration = (Function) pipelineDecoration;
-        return builder;
-    }
-
     public void pipeline(Consumer<RedisPipeline> function) {
         pipeline(p -> {
             function.accept(p);
@@ -175,7 +161,8 @@ public class JedisHelper<J extends Closeable> {
         return binaryPipeline(singleton(EMPTY_KEY), (p, k) -> function.apply(p)).get(EMPTY_KEY);
     }
 
-    public <K, V> Map<K, V> pipeline(Iterable<K> keys, BiFunction<RedisPipeline, K, Response<V>> function) {
+    public <K, V> Map<K, V> pipeline(Iterable<K> keys,
+            BiFunction<RedisPipeline, K, Response<V>> function) {
         return pipeline(keys, function, identity());
     }
 
@@ -184,8 +171,8 @@ public class JedisHelper<J extends Closeable> {
         return binaryPipeline(keys, function, identity());
     }
 
-    public <K, V, T> Map<K, T> pipeline(Iterable<K> keys, BiFunction<RedisPipeline, K, Response<V>> function,
-            Function<V, T> decoder) {
+    public <K, V, T> Map<K, T> pipeline(Iterable<K> keys,
+            BiFunction<RedisPipeline, K, Response<V>> function, Function<V, T> decoder) {
         return pipeline(keys, function, decoder, true);
     }
 
@@ -206,10 +193,27 @@ public class JedisHelper<J extends Closeable> {
         return pipeline0(keys, function, decoder, includeNullValue, this::generateBinaryPipeline);
     }
 
+    @SuppressWarnings({ "unchecked" })
+    private <P1> Map<PipelineOpListener<P1, Object>, Object> fireOnPipelineStarted(Object pool) {
+        Map<PipelineOpListener<P1, Object>, Object> map = new HashMap<>();
+        // never use collect, coz value may be null.
+        for (PipelineOpListener<Object, Object> pipelineOpListener : pipelineOpListeners) {
+            Object value = null;
+            try {
+                value = pipelineOpListener.onPipelineStarted(pool);
+            } catch (Throwable e) {
+                logger.error("", e);
+            } finally {
+                map.put((PipelineOpListener) pipelineOpListener, value);
+            }
+        }
+        return map;
+    }
+
     private <K, V, T, P1> Map<K, T> pipeline0(Iterable<K> keys,
             BiFunction<P1, K, Response<V>> function, Function<V, T> decoder,
             boolean includeNullValue,
-            BiFunction<Object, J, TwoTuple<PipelineBase, P1>> pipelineGenerator) {
+            TriFunction<Object, J, Map<PipelineOpListener<Object, Object>, Object>, TwoTuple<PipelineBase, P1>> pipelineGenerator) {
         int size;
         if (keys != null && keys instanceof Collection) {
             size = ((Collection<K>) keys).size();
@@ -225,7 +229,10 @@ public class JedisHelper<J extends Closeable> {
                 long start = currentTimeMillis();
                 Throwable t = null;
                 try (J jedis = getJedis(pool)) {
-                    TwoTuple<PipelineBase, P1> tuple = pipelineGenerator.apply(pool, jedis);
+                    Map<PipelineOpListener<Object, Object>, Object> started = fireOnPipelineStarted(
+                            pool);
+                    TwoTuple<PipelineBase, P1> tuple = pipelineGenerator.apply(pool, jedis,
+                            started);
                     PipelineBase pipeline = tuple.getFirst();
                     P1 p1 = tuple.getSecond();
                     Map<K, Response<V>> thisMap = new HashMap<>(list.size());
@@ -236,6 +243,7 @@ public class JedisHelper<J extends Closeable> {
                         }
                     }
                     syncPipeline(pipeline);
+                    fireAfterSync(pool, started);
                     thisMap.forEach((key, value) -> {
                         V rawValue = value.get();
                         if (rawValue != null || includeNullValue) {
@@ -258,6 +266,16 @@ public class JedisHelper<J extends Closeable> {
             }
         }
         return result;
+    }
+
+    private void fireAfterSync(Object pool, Map<PipelineOpListener<Object, Object>, Object> s) {
+        s.forEach((p, v) -> {
+            try {
+                p.afterSync(pool, p);
+            } catch (Throwable e) {
+                logger.error("", e);
+            }
+        });
     }
 
     public BasicCommands getBasic() {
@@ -305,24 +323,19 @@ public class JedisHelper<J extends Closeable> {
     }
 
     @SuppressWarnings("unchecked")
-    private TwoTuple<PipelineBase, RedisPipeline> generatePipeline(Object pool, J jedis) {
+    private TwoTuple<PipelineBase, RedisPipeline> generatePipeline(Object pool, J jedis,
+            Map<PipelineOpListener<Object, Object>, Object> startPipeline) {
         if (jedis instanceof Jedis) {
             Pipeline pipelined = ((Jedis) jedis).pipelined();
             PipelineBase p = pipelined;
-            RedisPipeline p1 = Reflection.newProxy(RedisPipeline.class,
-                    new PipelineListenerHandler<>(pool, p, pipelineOpListeners));
-            if (pipelineDecoration != null) {
-                p = pipelineDecoration.apply(p);
-            }
+            RedisPipeline p1 = newProxy(RedisPipeline.class,
+                    new PipelineListenerHandler<>(pool, p, pipelineOpListeners, startPipeline));
             return tuple(p, p1);
         } else if (jedis instanceof ShardedJedis) {
             ShardedJedisPipeline pipelined = ((ShardedJedis) jedis).pipelined();
             PipelineBase p = pipelined;
-            RedisPipeline p1 = Reflection.newProxy(RedisPipeline.class,
-                    new PipelineListenerHandler<>(pool, p, pipelineOpListeners));
-            if (pipelineDecoration != null) {
-                p = pipelineDecoration.apply(p);
-            }
+            RedisPipeline p1 = newProxy(RedisPipeline.class,
+                    new PipelineListenerHandler<>(pool, p, pipelineOpListeners, startPipeline));
             return tuple(p, p1);
         } else {
             throw new IllegalArgumentException("invalid jedis:" + jedis);
@@ -330,24 +343,19 @@ public class JedisHelper<J extends Closeable> {
     }
 
     @SuppressWarnings("unchecked")
-    private TwoTuple<PipelineBase, BinaryRedisPipeline> generateBinaryPipeline(Object pool, J jedis) {
+    private TwoTuple<PipelineBase, BinaryRedisPipeline> generateBinaryPipeline(Object pool, J jedis,
+            Map<PipelineOpListener<Object, Object>, Object> startPipeline) {
         if (jedis instanceof Jedis) {
             Pipeline pipelined = ((Jedis) jedis).pipelined();
             PipelineBase p = pipelined;
-            BinaryRedisPipeline p1 = Reflection.newProxy(BinaryRedisPipeline.class,
-                    new PipelineListenerHandler<>(pool, p, pipelineOpListeners));
-            if (pipelineDecoration != null) {
-                p = pipelineDecoration.apply(p);
-            }
+            BinaryRedisPipeline p1 = newProxy(BinaryRedisPipeline.class,
+                    new PipelineListenerHandler<>(pool, p, pipelineOpListeners, startPipeline));
             return tuple(p, p1);
         } else if (jedis instanceof ShardedJedis) {
             ShardedJedisPipeline pipelined = ((ShardedJedis) jedis).pipelined();
             PipelineBase p = pipelined;
-            BinaryRedisPipeline p1 = Reflection.newProxy(BinaryRedisPipeline.class,
-                    new PipelineListenerHandler<>(pool, p, pipelineOpListeners));
-            if (pipelineDecoration != null) {
-                p = pipelineDecoration.apply(p);
-            }
+            BinaryRedisPipeline p1 = newProxy(BinaryRedisPipeline.class,
+                    new PipelineListenerHandler<>(pool, p, pipelineOpListeners, startPipeline));
             return tuple(p, p1);
         } else {
             throw new IllegalArgumentException("invalid jedis:" + jedis);
@@ -452,7 +460,6 @@ public class JedisHelper<J extends Closeable> {
         }, ScanResult::getStringCursor, "0").stream();
     }
 
-
     public Stream<Tuple> zscan(String key) {
         return zscan(key, new ScanParams());
     }
@@ -516,9 +523,8 @@ public class JedisHelper<J extends Closeable> {
         private Class<?> jedisType;
         private Class<?> binaryJedisType;
 
-        private Function<Object, PipelineBase> pipelineDecoration;
         private List<OpListener<O>> opListeners = new ArrayList<>();
-        private List<PipelineOpListener<O>> pipelineOpListeners = new ArrayList<>();
+        private List<PipelineOpListener<O, ?>> pipelineOpListeners = new ArrayList<>();
 
         public Builder<J, O> withPipelinePartitionSize(int size) {
             this.pipelinePartitionSize = size;
@@ -530,7 +536,7 @@ public class JedisHelper<J extends Closeable> {
             return this;
         }
 
-        public Builder<J, O> addPipelineOpListener(PipelineOpListener<O> op) {
+        public Builder<J, O> addPipelineOpListener(PipelineOpListener<O, ?> op) {
             this.pipelineOpListeners.add(checkNotNull(op));
             return this;
         }
@@ -539,7 +545,7 @@ public class JedisHelper<J extends Closeable> {
         public JedisHelper<J> build() {
             ensure();
             return new JedisHelper<>(poolFactory, pipelinePartitionSize, jedisType, binaryJedisType,
-                    pipelineDecoration, (List) opListeners, (List) pipelineOpListeners);
+                    (List) opListeners, (List) pipelineOpListeners);
         }
 
         private void ensure() {
