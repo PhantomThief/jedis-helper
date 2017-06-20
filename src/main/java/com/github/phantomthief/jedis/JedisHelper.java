@@ -226,11 +226,10 @@ public class JedisHelper<J extends Closeable> {
 
             for (List<K> list : partition) {
                 Object pool = poolFactory.get();
-                long start = currentTimeMillis();
+                Map<PipelineOpListener<Object, Object>, Object> started = fireOnPipelineStarted(
+                        pool);
                 Throwable t = null;
                 try (J jedis = getJedis(pool)) {
-                    Map<PipelineOpListener<Object, Object>, Object> started = fireOnPipelineStarted(
-                            pool);
                     TwoTuple<PipelineBase, P1> tuple = pipelineGenerator.apply(pool, jedis,
                             started);
                     PipelineBase pipeline = tuple.getFirst();
@@ -243,7 +242,6 @@ public class JedisHelper<J extends Closeable> {
                         }
                     }
                     syncPipeline(pipeline);
-                    fireAfterSync(pool, started);
                     thisMap.forEach((key, value) -> {
                         V rawValue = value.get();
                         if (rawValue != null || includeNullValue) {
@@ -254,24 +252,18 @@ public class JedisHelper<J extends Closeable> {
                 } catch (Throwable e) {
                     t = e;
                 } finally {
-                    long cost = currentTimeMillis() - start;
-                    for (OpListener<Object> opListener : opListeners) {
-                        try {
-                            opListener.onComplete(pool, start, null, null, cost, t);
-                        } catch (Throwable e) {
-                            logger.error("", e);
-                        }
-                    }
+                    fireAfterSync(pool, started, t);
                 }
             }
         }
         return result;
     }
 
-    private void fireAfterSync(Object pool, Map<PipelineOpListener<Object, Object>, Object> s) {
+    private void fireAfterSync(Object pool, Map<PipelineOpListener<Object, Object>, Object> s,
+            Throwable t) {
         s.forEach((p, v) -> {
             try {
-                p.afterSync(pool, v);
+                p.afterSync(pool, v, t);
             } catch (Throwable e) {
                 logger.error("", e);
             }
