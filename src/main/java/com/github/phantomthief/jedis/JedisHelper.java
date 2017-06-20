@@ -271,7 +271,7 @@ public class JedisHelper<J extends Closeable> {
     private void fireAfterSync(Object pool, Map<PipelineOpListener<Object, Object>, Object> s) {
         s.forEach((p, v) -> {
             try {
-                p.afterSync(pool, p);
+                p.afterSync(pool, v);
             } catch (Throwable e) {
                 logger.error("", e);
             }
