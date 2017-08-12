@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.lang.reflect.Method;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 /**
  * @author w.vela
@@ -11,6 +12,10 @@ import javax.annotation.Nonnull;
  */
 public interface OpInterceptor<J extends Closeable, P> {
 
+    /**
+     * @return {@code null} if didn't want to change any behavior.
+     */
+    @Nullable
     JedisOpCall<J> interceptCall(P pool, Method method, J jedis, Object[] args);
 
     class JedisOpCall<J extends Closeable> {

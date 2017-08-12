@@ -575,6 +575,9 @@ public class JedisHelper<J extends Closeable> {
                 J thisJedis = jedis;
                 for (OpInterceptor<J, Object> opInterceptor : opInterceptors) {
                     JedisOpCall<J> call = opInterceptor.interceptCall(pool, method, jedis, args);
+                    if (call == null) {
+                        continue;
+                    }
                     method = call.getMethod();
                     thisJedis = call.getJedis();
                     args = call.getArgs();
