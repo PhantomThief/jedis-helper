@@ -35,6 +35,7 @@ import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.github.phantomthief.jedis.OpInterceptor.JedisOpCall;
 import com.github.phantomthief.jedis.exception.NoAvailablePoolException;
 import com.github.phantomthief.tuple.TwoTuple;
 import com.github.phantomthief.util.CursorIteratorEx;
@@ -93,18 +94,17 @@ public class JedisHelper<J extends Closeable> {
     private final List<OpListener<Object>> opListeners;
     private final List<PipelineOpListener<Object, Object>> pipelineOpListeners;
 
-    private JedisHelper(Supplier<Object> poolFactory, //
-            int pipelinePartitionSize, //
-            Class<?> jedisType, //
-            Class<?> binaryJedisType, //
-            List<OpListener<Object>> opListeners, //
-            List<PipelineOpListener<Object, Object>> pipelineOpListeners) {
-        this.poolFactory = poolFactory;
-        this.pipelinePartitionSize = pipelinePartitionSize;
-        this.jedisType = jedisType;
-        this.binaryJedisType = binaryJedisType;
-        this.opListeners = opListeners;
-        this.pipelineOpListeners = pipelineOpListeners;
+    private final List<OpInterceptor<J>> opInterceptors;
+
+    @SuppressWarnings("unchecked")
+    private JedisHelper(Builder<J, Object> builder) {
+        this.poolFactory = builder.poolFactory;
+        this.pipelinePartitionSize = builder.pipelinePartitionSize;
+        this.jedisType = builder.jedisType;
+        this.binaryJedisType = builder.binaryJedisType;
+        this.opListeners = builder.opListeners;
+        this.pipelineOpListeners = (List) builder.pipelineOpListeners;
+        this.opInterceptors = builder.opInterceptors;
     }
 
     public static String getShardBitKey(long bit, String keyPrefix, int keyHashRange) {
@@ -518,8 +518,18 @@ public class JedisHelper<J extends Closeable> {
         private List<OpListener<O>> opListeners = new ArrayList<>();
         private List<PipelineOpListener<O, ?>> pipelineOpListeners = new ArrayList<>();
 
+        private List<OpInterceptor<J>> opInterceptors = new ArrayList<>();
+
         public Builder<J, O> withPipelinePartitionSize(int size) {
             this.pipelinePartitionSize = size;
+            return this;
+        }
+
+        /**
+         * @param op interceptors will be called as adding sequence.
+         */
+        public Builder<J, O> addOpInterceptor(OpInterceptor<J> op) {
+            this.opInterceptors.add(checkNotNull(op));
             return this;
         }
 
@@ -536,8 +546,7 @@ public class JedisHelper<J extends Closeable> {
         @SuppressWarnings("unchecked")
         public JedisHelper<J> build() {
             ensure();
-            return new JedisHelper<>(poolFactory, pipelinePartitionSize, jedisType, binaryJedisType,
-                    (List) opListeners, (List) pipelineOpListeners);
+            return new JedisHelper(this);
         }
 
         private void ensure() {
@@ -563,7 +572,18 @@ public class JedisHelper<J extends Closeable> {
             }
             Throwable t = null;
             try (J jedis = getJedis(pool)) {
-                return method.invoke(jedis, args);
+                J thisJedis = jedis;
+                for (OpInterceptor<J> opInterceptor : opInterceptors) {
+                    JedisOpCall<J> call = opInterceptor.interceptCall(method, jedis, args);
+                    method = call.getMethod();
+                    thisJedis = call.getJedis();
+                    args = call.getArgs();
+
+                    if (call.hasFinalObject()) {
+                        return call.getFinalObject();
+                    }
+                }
+                return method.invoke(thisJedis, args);
             } catch (Throwable e) {
                 if (e instanceof InvocationTargetException) {
                     t = ((InvocationTargetException) e).getTargetException();

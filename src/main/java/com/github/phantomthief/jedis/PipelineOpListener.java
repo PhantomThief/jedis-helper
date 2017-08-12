@@ -26,6 +26,12 @@ public interface PipelineOpListener<P, T> {
     /**
      * @param obj the object return by {@link #onPipelineStarted}
      */
+    default void beforeSync(P pool, @Nullable T obj) throws Exception {
+    }
+
+    /**
+     * @param obj the object return by {@link #onPipelineStarted}
+     */
     default void afterSync(P pool, @Nullable T obj, @Nullable Throwable t) throws Exception {
     }
 }
