@@ -9,9 +9,9 @@ import javax.annotation.Nonnull;
  * @author w.vela
  * Created on 2017-08-11.
  */
-public interface OpInterceptor<J extends Closeable> {
+public interface OpInterceptor<J extends Closeable, P> {
 
-    JedisOpCall<J> interceptCall(Method method, J jedis, Object[] args);
+    JedisOpCall<J> interceptCall(P pool, Method method, J jedis, Object[] args);
 
     class JedisOpCall<J extends Closeable> {
 

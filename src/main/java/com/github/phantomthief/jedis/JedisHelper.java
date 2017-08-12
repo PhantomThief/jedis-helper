@@ -94,7 +94,7 @@ public class JedisHelper<J extends Closeable> {
     private final List<OpListener<Object>> opListeners;
     private final List<PipelineOpListener<Object, Object>> pipelineOpListeners;
 
-    private final List<OpInterceptor<J>> opInterceptors;
+    private final List<OpInterceptor<J, Object>> opInterceptors;
 
     @SuppressWarnings("unchecked")
     private JedisHelper(Builder<J, Object> builder) {
@@ -518,7 +518,7 @@ public class JedisHelper<J extends Closeable> {
         private List<OpListener<O>> opListeners = new ArrayList<>();
         private List<PipelineOpListener<O, ?>> pipelineOpListeners = new ArrayList<>();
 
-        private List<OpInterceptor<J>> opInterceptors = new ArrayList<>();
+        private List<OpInterceptor<J, O>> opInterceptors = new ArrayList<>();
 
         public Builder<J, O> withPipelinePartitionSize(int size) {
             this.pipelinePartitionSize = size;
@@ -528,7 +528,7 @@ public class JedisHelper<J extends Closeable> {
         /**
          * @param op interceptors will be called as adding sequence.
          */
-        public Builder<J, O> addOpInterceptor(OpInterceptor<J> op) {
+        public Builder<J, O> addOpInterceptor(OpInterceptor<J, O> op) {
             this.opInterceptors.add(checkNotNull(op));
             return this;
         }
@@ -573,8 +573,8 @@ public class JedisHelper<J extends Closeable> {
             Throwable t = null;
             try (J jedis = getJedis(pool)) {
                 J thisJedis = jedis;
-                for (OpInterceptor<J> opInterceptor : opInterceptors) {
-                    JedisOpCall<J> call = opInterceptor.interceptCall(method, jedis, args);
+                for (OpInterceptor<J, Object> opInterceptor : opInterceptors) {
+                    JedisOpCall<J> call = opInterceptor.interceptCall(pool, method, jedis, args);
                     method = call.getMethod();
                     thisJedis = call.getJedis();
                     args = call.getArgs();
