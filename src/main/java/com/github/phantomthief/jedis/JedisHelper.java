@@ -241,6 +241,7 @@ public class JedisHelper<J extends Closeable> {
                             thisMap.put(key, apply);
                         }
                     }
+                    fireBeforeSync(pool, pipeline, started, t);
                     syncPipeline(pipeline);
                     thisMap.forEach((key, value) -> {
                         V rawValue = value.get();
@@ -257,6 +258,17 @@ public class JedisHelper<J extends Closeable> {
             }
         }
         return result;
+    }
+
+    private void fireBeforeSync(Object pool, PipelineBase pipeline,
+            Map<PipelineOpListener<Object, Object>, Object> s, Throwable t) {
+        s.forEach((p, v) -> {
+            try {
+                p.beforeSync(pool, pipeline, v);
+            } catch (Throwable e) {
+                logger.error("", e);
+            }
+        });
     }
 
     private void fireAfterSync(Object pool, Map<PipelineOpListener<Object, Object>, Object> s,

@@ -10,11 +10,13 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import redis.clients.jedis.PipelineBase;
+
 /**
  * @author w.vela <wangtianzhou@kuaishou.com>
  * Created on 2017-06-14.
  */
-class PipelineListenerHandler<P> implements InvocationHandler {
+class PipelineListenerHandler<P extends PipelineBase> implements InvocationHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(PipelineListenerHandler.class);
     private final Object pool;
@@ -36,8 +38,8 @@ class PipelineListenerHandler<P> implements InvocationHandler {
         Object invoke = method.invoke(pipeline, args);
         for (PipelineOpListener<Object, Object> opListener : listeners) {
             try {
-                opListener.onRequest(pool, startPipeline.get(opListener), currentTimeMillis(),
-                        method, args);
+                opListener.onRequest(pool, pipeline, startPipeline.get(opListener),
+                        currentTimeMillis(), method, args, invoke);
             } catch (Throwable e) {
                 logger.error("", e);
             }
