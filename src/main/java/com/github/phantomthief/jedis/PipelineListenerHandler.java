@@ -13,7 +13,7 @@ import org.slf4j.LoggerFactory;
 import redis.clients.jedis.PipelineBase;
 
 /**
- * @author w.vela <wangtianzhou@kuaishou.com>
+ * @author w.vela
  * Created on 2017-06-14.
  */
 class PipelineListenerHandler<P extends PipelineBase> implements InvocationHandler {
