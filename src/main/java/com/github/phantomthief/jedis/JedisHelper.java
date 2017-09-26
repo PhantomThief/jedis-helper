@@ -32,6 +32,9 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+import javax.annotation.CheckReturnValue;
+import javax.annotation.Nonnull;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,6 +94,7 @@ public class JedisHelper<J extends Closeable> {
     private final Supplier<BinaryJedisCommands> binaryJedisCommandsSupplier = lazy(
             this::getBinary0);
 
+    private final List<PoolListener<Object>> poolListeners;
     private final List<OpListener<Object>> opListeners;
     private final List<PipelineOpListener<Object, Object>> pipelineOpListeners;
 
@@ -102,6 +106,7 @@ public class JedisHelper<J extends Closeable> {
         this.pipelinePartitionSize = builder.pipelinePartitionSize;
         this.jedisType = builder.jedisType;
         this.binaryJedisType = builder.binaryJedisType;
+        this.poolListeners = builder.poolListeners;
         this.opListeners = builder.opListeners;
         this.pipelineOpListeners = (List) builder.pipelineOpListeners;
         this.opInterceptors = builder.opInterceptors;
@@ -320,9 +325,27 @@ public class JedisHelper<J extends Closeable> {
     @SuppressWarnings("unchecked")
     private J getJedis(Object pool) {
         if (pool instanceof Pool) {
-            return ((Pool<J>) pool).getResource();
+            long borrowedTime = currentTimeMillis();
+            try {
+                J resource = ((Pool<J>) pool).getResource();
+                firePoolListener(pool, borrowedTime, null);
+                return resource;
+            } catch (Throwable e) {
+                firePoolListener(pool, borrowedTime, e);
+                throw e;
+            }
         } else {
             throw new IllegalArgumentException("invalid pool:" + pool);
+        }
+    }
+
+    private void firePoolListener(Object pool, long borrowedTime, Throwable e) {
+        for (PoolListener<Object> poolListener : poolListeners) {
+            try {
+                poolListener.onPoolBorrowed(pool, borrowedTime, e);
+            } catch (Throwable ex) {
+                logger.error("", ex);
+            }
         }
     }
 
@@ -527,30 +550,41 @@ public class JedisHelper<J extends Closeable> {
         private Class<?> jedisType;
         private Class<?> binaryJedisType;
 
+        private List<PoolListener<O>> poolListeners = new ArrayList<>();
         private List<OpListener<O>> opListeners = new ArrayList<>();
         private List<PipelineOpListener<O, ?>> pipelineOpListeners = new ArrayList<>();
 
         private List<OpInterceptor<J, O>> opInterceptors = new ArrayList<>();
 
+        @CheckReturnValue
         public Builder<J, O> withPipelinePartitionSize(int size) {
             this.pipelinePartitionSize = size;
+            return this;
+        }
+
+        @CheckReturnValue
+        public Builder<J, O> addPoolListener(@Nonnull PoolListener<O> poolListener) {
+            this.poolListeners.add(checkNotNull(poolListener));
             return this;
         }
 
         /**
          * @param op interceptors will be called as adding sequence.
          */
-        public Builder<J, O> addOpInterceptor(OpInterceptor<J, O> op) {
+        @CheckReturnValue
+        public Builder<J, O> addOpInterceptor(@Nonnull OpInterceptor<J, O> op) {
             this.opInterceptors.add(checkNotNull(op));
             return this;
         }
 
-        public Builder<J, O> addOpListener(OpListener<O> op) {
+        @CheckReturnValue
+        public Builder<J, O> addOpListener(@Nonnull OpListener<O> op) {
             this.opListeners.add(checkNotNull(op));
             return this;
         }
 
-        public Builder<J, O> addPipelineOpListener(PipelineOpListener<O, ?> op) {
+        @CheckReturnValue
+        public Builder<J, O> addPipelineOpListener(@Nonnull PipelineOpListener<O, ?> op) {
             this.pipelineOpListeners.add(checkNotNull(op));
             return this;
         }
