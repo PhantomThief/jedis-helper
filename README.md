@@ -9,7 +9,7 @@ jedis-helper [![Build Status](https://travis-ci.org/PhantomThief/jedis-helper.sv
 <dependency>
     <groupId>com.github.phantomthief</groupId>
     <artifactId>jedis-helper</artifactId>
-    <version>0.1.1-SNAPSHOT</version>
+    <version>0.1.10-SNAPSHOT</version>
 </dependency>
 ```
 
