@@ -12,8 +12,11 @@ import redis.clients.jedis.PipelineBase;
  */
 public interface PipelineOpListener<P, T> {
 
+    /**
+     * @throws Exception any exception would be catch except {@link com.github.phantomthief.jedis.exception.RethrowException}
+     */
     @Nullable
-    default T onPipelineStarted(P pool) throws Exception {
+    default T onPipelineStarted(@Nullable P pool) throws Exception {
         return null;
     }
 
@@ -34,6 +37,7 @@ public interface PipelineOpListener<P, T> {
 
     /**
      * @param obj the object return by {@link #onPipelineStarted}
+     * @throws Exception any exception would be catch except {@link com.github.phantomthief.jedis.exception.RethrowException}
      */
     default void afterSync(P pool, @Nullable T obj, @Nullable Throwable t) throws Exception {
     }

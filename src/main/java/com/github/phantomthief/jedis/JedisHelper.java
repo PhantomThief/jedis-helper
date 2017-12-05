@@ -40,6 +40,7 @@ import org.slf4j.LoggerFactory;
 
 import com.github.phantomthief.jedis.OpInterceptor.JedisOpCall;
 import com.github.phantomthief.jedis.exception.NoAvailablePoolException;
+import com.github.phantomthief.jedis.exception.RethrowException;
 import com.github.phantomthief.tuple.TwoTuple;
 import com.github.phantomthief.util.CursorIteratorEx;
 import com.github.phantomthief.util.TriFunction;
@@ -206,9 +207,11 @@ public class JedisHelper<J extends Closeable> {
             Object value = null;
             try {
                 value = pipelineOpListener.onPipelineStarted(pool);
+                map.put((PipelineOpListener) pipelineOpListener, value);
+            } catch (RethrowException e) {
+                throw e.getThrowable();
             } catch (Throwable e) {
                 logger.error("", e);
-            } finally {
                 map.put((PipelineOpListener) pipelineOpListener, value);
             }
         }
@@ -281,6 +284,8 @@ public class JedisHelper<J extends Closeable> {
         s.forEach((p, v) -> {
             try {
                 p.afterSync(pool, v, t);
+            } catch (RethrowException e) {
+                throw e.getThrowable();
             } catch (Throwable e) {
                 logger.error("", e);
             }
