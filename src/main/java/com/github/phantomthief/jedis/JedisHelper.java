@@ -562,12 +562,14 @@ public class JedisHelper<J extends Closeable> {
         private List<OpInterceptor<J, O>> opInterceptors = new ArrayList<>();
 
         @CheckReturnValue
+        @Nonnull
         public Builder<J, O> withPipelinePartitionSize(int size) {
             this.pipelinePartitionSize = size;
             return this;
         }
 
         @CheckReturnValue
+        @Nonnull
         public Builder<J, O> addPoolListener(@Nonnull PoolListener<O> poolListener) {
             this.poolListeners.add(checkNotNull(poolListener));
             return this;
@@ -577,24 +579,28 @@ public class JedisHelper<J extends Closeable> {
          * @param op interceptors will be called as adding sequence.
          */
         @CheckReturnValue
+        @Nonnull
         public Builder<J, O> addOpInterceptor(@Nonnull OpInterceptor<J, O> op) {
             this.opInterceptors.add(checkNotNull(op));
             return this;
         }
 
         @CheckReturnValue
+        @Nonnull
         public Builder<J, O> addOpListener(@Nonnull OpListener<O> op) {
             this.opListeners.add(checkNotNull(op));
             return this;
         }
 
         @CheckReturnValue
+        @Nonnull
         public Builder<J, O> addPipelineOpListener(@Nonnull PipelineOpListener<O, ?> op) {
             this.pipelineOpListeners.add(checkNotNull(op));
             return this;
         }
 
         @SuppressWarnings("unchecked")
+        @Nonnull
         public JedisHelper<J> build() {
             ensure();
             return new JedisHelper(this);
