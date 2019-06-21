@@ -52,9 +52,9 @@
     </licenses>
 
     <scm>
-        <connection>scm:git:https://github.com/PhantomThief/jedis-helper.git</connection>
+        <connection>scm:git:git@github.com:PhantomThief/jedis-helper.git</connection>
         <url>https://github.com/PhantomThief/jedis-helper.git</url>
-        <developerConnection>scm:git:https://github.com/PhantomThief/jedis-helper.git
+        <developerConnection>scm:git:git@github.com:PhantomThief/jedis-helper.git
         </developerConnection>
     </scm>
 
