@@ -107,8 +107,8 @@ public final class JedisUtils {
                 if (!difference.entriesDiffering().isEmpty()) {
                     for (List<Entry<String, ValueDifference<Double>>> list : partition(
                             difference.entriesDiffering().entrySet(), ZADD_MAX_SPLIT_COUNT)) {
-                        jedis.zadd(realKey, list.stream() //
-                                .filter(e -> e.getValue().leftValue() != null) //
+                        jedis.zadd(realKey, list.stream()
+                                .filter(e -> e.getValue().leftValue() != null)
                                 .collect(toMap(Entry::getKey, e -> e.getValue().leftValue())));
                         changed = true;
                     }

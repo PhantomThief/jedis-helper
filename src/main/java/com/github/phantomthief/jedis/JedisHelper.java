@@ -531,7 +531,7 @@ public class JedisHelper<J extends Closeable> {
     private <K, R> CursorIteratorEx<R, K, ScanResult<R>> scan(
             BiFunction<J, K, ScanResult<R>> scanFunction,
             Function<ScanResult<R>, K> cursorExtractor, K initCursor) {
-        return CursorIteratorEx.newBuilder() //
+        return CursorIteratorEx.newBuilder()
                 .withDataRetriever((K cursor) -> {
                     Object pool = poolFactory.get();
                     try (J jedis = getJedis(pool)) {
@@ -539,11 +539,11 @@ public class JedisHelper<J extends Closeable> {
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
-                }) //
-                .withCursorExtractor(cursorExtractor) //
-                .withDataExtractor((ScanResult<R> s) -> s.getResult().iterator()) //
-                .withEndChecker(s -> "0".equals(s) || s == null) //
-                .withInitCursor(initCursor) //
+                })
+                .withCursorExtractor(cursorExtractor)
+                .withDataExtractor((ScanResult<R> s) -> s.getResult().iterator())
+                .withEndChecker(s -> "0".equals(s) || s == null)
+                .withInitCursor(initCursor)
                 .build();
     }
 
