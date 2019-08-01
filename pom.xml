@@ -15,7 +15,7 @@
         <cursor-iterator.version>1.0.8</cursor-iterator.version>
         <more-lambdas.version>0.1.8</more-lambdas.version>
 
-        <junit.version>5.5.0</junit.version>
+        <junit.version>5.5.1</junit.version>
         <jsr305.version>3.0.2</jsr305.version>
 
         <maven-javadoc-plugin.version>3.1.1</maven-javadoc-plugin.version>
