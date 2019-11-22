@@ -1,17 +1,13 @@
-jedis-helper [![Build Status](https://travis-ci.org/PhantomThief/jedis-helper.svg)](https://travis-ci.org/PhantomThief/jedis-helper)
+jedis-helper
 =======================
+[![Build Status](https://travis-ci.org/PhantomThief/jedis-helper.svg)](https://travis-ci.org/PhantomThief/jedis-helper)
+[![Total alerts](https://img.shields.io/lgtm/alerts/g/PhantomThief/jedis-helper.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/PhantomThief/jedis-helper/alerts/)
+[![Language grade: Java](https://img.shields.io/lgtm/grade/java/g/PhantomThief/jedis-helper.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/PhantomThief/jedis-helper/context:java)
+[![Maven Central](https://img.shields.io/maven-central/v/com.github.phantomthief/jedis-helper)](https://search.maven.org/artifact/com.github.phantomthief/jedis-helper/)
 
 关于jedis的一些工具类的封装
 
 ## 基本使用
-
-```xml
-<dependency>
-    <groupId>com.github.phantomthief</groupId>
-    <artifactId>jedis-helper</artifactId>
-    <version>0.1.10-SNAPSHOT</version>
-</dependency>
-```
 
 ```Java
 // 声明
