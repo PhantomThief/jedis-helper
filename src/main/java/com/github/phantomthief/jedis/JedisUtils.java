@@ -34,7 +34,7 @@ public final class JedisUtils {
     private static final int MAX_ZSET_COUNT = MAX_VALUE / 2;
     private static final int ZADD_MAX_SPLIT_COUNT = 1000;
 
-    private static Logger logger = getLogger(JedisUtils.class);
+    private static final Logger logger = getLogger(JedisUtils.class);
 
     private JedisUtils() {
         throw new UnsupportedOperationException();

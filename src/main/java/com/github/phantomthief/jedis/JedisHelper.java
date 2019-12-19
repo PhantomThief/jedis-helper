@@ -223,7 +223,7 @@ public class JedisHelper<J extends Closeable> {
             boolean includeNullValue,
             TriFunction<Object, J, Map<PipelineOpListener<Object, Object>, Object>, TwoTuple<PipelineBase, P1>> pipelineGenerator) {
         int size;
-        if (keys != null && keys instanceof Collection) {
+        if (keys instanceof Collection) {
             size = ((Collection<K>) keys).size();
         } else {
             size = 16;
