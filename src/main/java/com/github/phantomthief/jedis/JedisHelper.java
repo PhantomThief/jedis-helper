@@ -10,6 +10,7 @@ import static com.google.common.collect.Iterables.partition;
 import static com.google.common.collect.Maps.newHashMapWithExpectedSize;
 import static com.google.common.reflect.Reflection.newProxy;
 import static java.lang.System.currentTimeMillis;
+import static java.lang.System.nanoTime;
 import static java.lang.reflect.Proxy.newProxyInstance;
 import static java.util.Collections.singleton;
 import static java.util.function.Function.identity;
@@ -331,12 +332,13 @@ public class JedisHelper<J extends Closeable> {
     private J getJedis(Object pool) {
         if (pool instanceof Pool) {
             long borrowedTime = currentTimeMillis();
+            long borrowedNanoTime = nanoTime();
             try {
                 J resource = ((Pool<J>) pool).getResource();
-                firePoolListener(pool, borrowedTime, null);
+                firePoolListener(pool, borrowedTime, borrowedNanoTime, null);
                 return resource;
             } catch (Throwable e) {
-                firePoolListener(pool, borrowedTime, e);
+                firePoolListener(pool, borrowedTime, borrowedNanoTime, e);
                 throw e;
             }
         } else {
@@ -344,10 +346,11 @@ public class JedisHelper<J extends Closeable> {
         }
     }
 
-    private void firePoolListener(Object pool, long borrowedTime, Throwable e) {
+    private void firePoolListener(Object pool, long borrowedTime, long borrowedNanoTime, Throwable e) {
         for (PoolListener<Object> poolListener : poolListeners) {
             try {
                 poolListener.onPoolBorrowed(pool, borrowedTime, e);
+                poolListener.onPoolBorrowedEx(pool, borrowedNanoTime, e);
             } catch (Throwable ex) {
                 logger.error("", ex);
             }
@@ -618,12 +621,15 @@ public class JedisHelper<J extends Closeable> {
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             long start = currentTimeMillis();
+            long startNano = nanoTime();
             Object pool = poolFactory.get();
             if (pool == null) {
                 NoAvailablePoolException exception = new NoAvailablePoolException();
                 long cost = currentTimeMillis() - start;
+                long costInNano = nanoTime() - startNano;
                 for (OpListener<Object> opListener : opListeners) {
                     opListener.onComplete(null, start, method, args, cost, exception);
+                    opListener.onCompleteEx(null, startNano, method, args, costInNano, exception);
                 }
                 throw exception;
             }
@@ -653,9 +659,11 @@ public class JedisHelper<J extends Closeable> {
                 throw e;
             } finally {
                 long cost = currentTimeMillis() - start;
+                long costInNano = nanoTime() - startNano;
                 for (OpListener<Object> opListener : opListeners) {
                     try {
                         opListener.onComplete(pool, start, method, args, cost, t);
+                        opListener.onCompleteEx(pool, startNano, method, args, costInNano, t);
                     } catch (Throwable e) {
                         logger.error("", e);
                     }

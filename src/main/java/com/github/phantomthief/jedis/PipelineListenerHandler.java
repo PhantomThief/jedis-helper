@@ -1,6 +1,7 @@
 package com.github.phantomthief.jedis;
 
 import static java.lang.System.currentTimeMillis;
+import static java.lang.System.nanoTime;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -40,6 +41,7 @@ class PipelineListenerHandler<P extends PipelineBase> implements InvocationHandl
             try {
                 opListener.onRequest(pool, pipeline, startPipeline.get(opListener),
                         currentTimeMillis(), method, args, invoke);
+                opListener.onRequestEx(pool, pipeline, startPipeline.get(opListener), nanoTime(), method, args, invoke);
             } catch (Throwable e) {
                 logger.error("", e);
             }

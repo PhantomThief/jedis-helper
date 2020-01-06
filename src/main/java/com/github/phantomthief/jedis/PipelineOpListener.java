@@ -26,8 +26,13 @@ public interface PipelineOpListener<P, T> {
      * @param requestTime pipeline request timestamp in ms, NOT COST!
      * @param pipelineResponse pipeline response holder, typically is {@link redis.clients.jedis.Response}
      */
+    @Deprecated
     void onRequest(P pool, PipelineBase pipeline, @Nullable T obj, long requestTime, Method method,
             Object[] args, Object pipelineResponse) throws Exception;
+
+    default void onRequestEx(P pool, PipelineBase pipeline, @Nullable T obj, long requestNanoTime, Method method,
+            Object[] args, Object pipelineResponse) throws Exception {
+    }
 
     /**
      * @param obj the object return by {@link #onPipelineStarted}
