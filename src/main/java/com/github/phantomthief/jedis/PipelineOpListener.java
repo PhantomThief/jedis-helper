@@ -30,8 +30,8 @@ public interface PipelineOpListener<P, T> {
     void onRequest(P pool, PipelineBase pipeline, @Nullable T obj, long requestTime, Method method,
             Object[] args, Object pipelineResponse) throws Exception;
 
-    default void onRequestEx(P pool, PipelineBase pipeline, @Nullable T obj, long requestNanoTime, Method method,
-            Object[] args, Object pipelineResponse) throws Exception {
+    default void onRequest(P pool, PipelineBase pipeline, @Nullable T obj, long requestTime, long requestNanoTime,
+            Method method, Object[] args, Object pipelineResponse) throws Exception {
     }
 
     /**

@@ -15,6 +15,7 @@ public interface PoolListener<P> {
     @Deprecated
     void onPoolBorrowed(@Nonnull P pool, long borrowTime, @Nullable Throwable t) throws Exception;
 
-    default void onPoolBorrowedEx(@Nonnull P pool, long borrowNanoTime, @Nullable Throwable t) throws Exception {
+    default void onPoolBorrowed(@Nonnull P pool, long borrowTime, long borrowNanoTime, @Nullable Throwable t)
+            throws Exception {
     }
 }

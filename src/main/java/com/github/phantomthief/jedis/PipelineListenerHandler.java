@@ -39,9 +39,10 @@ class PipelineListenerHandler<P extends PipelineBase> implements InvocationHandl
         Object invoke = method.invoke(pipeline, args);
         for (PipelineOpListener<Object, Object> opListener : listeners) {
             try {
-                opListener.onRequest(pool, pipeline, startPipeline.get(opListener),
-                        currentTimeMillis(), method, args, invoke);
-                opListener.onRequestEx(pool, pipeline, startPipeline.get(opListener), nanoTime(), method, args, invoke);
+                long requestTime = currentTimeMillis();
+                Object obj = startPipeline.get(opListener);
+                opListener.onRequest(pool, pipeline, obj, requestTime, method, args, invoke);
+                opListener.onRequest(pool, pipeline, obj, requestTime, nanoTime(), method, args, invoke);
             } catch (Throwable e) {
                 logger.error("", e);
             }

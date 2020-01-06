@@ -350,7 +350,7 @@ public class JedisHelper<J extends Closeable> {
         for (PoolListener<Object> poolListener : poolListeners) {
             try {
                 poolListener.onPoolBorrowed(pool, borrowedTime, e);
-                poolListener.onPoolBorrowedEx(pool, borrowedNanoTime, e);
+                poolListener.onPoolBorrowed(pool, borrowedTime, borrowedNanoTime, e);
             } catch (Throwable ex) {
                 logger.error("", ex);
             }
@@ -629,7 +629,7 @@ public class JedisHelper<J extends Closeable> {
                 long costInNano = nanoTime() - startNano;
                 for (OpListener<Object> opListener : opListeners) {
                     opListener.onComplete(null, start, method, args, cost, exception);
-                    opListener.onCompleteEx(null, startNano, method, args, costInNano, exception);
+                    opListener.onComplete(null, start, startNano, method, args, costInNano, exception);
                 }
                 throw exception;
             }
@@ -663,7 +663,7 @@ public class JedisHelper<J extends Closeable> {
                 for (OpListener<Object> opListener : opListeners) {
                     try {
                         opListener.onComplete(pool, start, method, args, cost, t);
-                        opListener.onCompleteEx(pool, startNano, method, args, costInNano, t);
+                        opListener.onComplete(pool, start, startNano, method, args, costInNano, t);
                     } catch (Throwable e) {
                         logger.error("", e);
                     }

@@ -17,7 +17,7 @@ public interface OpListener<P> {
     void onComplete(P pool, long requestTime, Method method, Object[] args, long costInMs,
             Throwable t) throws Exception;
 
-    default void onCompleteEx(P pool, long requestNanoTime, Method method, Object[] args, long costInNano, Throwable t)
-            throws Exception {
+    default void onComplete(P pool, long requestTime, long requestNanoTime, Method method, Object[] args,
+            long costInNano, Throwable t) throws Exception {
     }
 }
