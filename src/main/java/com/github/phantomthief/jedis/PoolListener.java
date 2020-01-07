@@ -11,11 +11,7 @@ public interface PoolListener<P> {
 
     /**
      * @param borrowTime request timestamp in ms, NOT COST!
+     * @param borrowNanoTime request moment's System.nanoTime(), NOT COST!
      */
-    @Deprecated
-    void onPoolBorrowed(@Nonnull P pool, long borrowTime, @Nullable Throwable t) throws Exception;
-
-    default void onPoolBorrowed(@Nonnull P pool, long borrowTime, long borrowNanoTime, @Nullable Throwable t)
-            throws Exception {
-    }
+    void onPoolBorrowed(@Nonnull P pool, long borrowTime, long borrowNanoTime, @Nullable Throwable t) throws Exception;
 }
