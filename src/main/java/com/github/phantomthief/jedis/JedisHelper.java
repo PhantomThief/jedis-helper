@@ -655,7 +655,6 @@ public class JedisHelper<J extends Closeable> {
                 }
                 throw e;
             } finally {
-                long cost = currentTimeMillis() - start;
                 long costInNano = nanoTime() - startNano;
                 for (OpListener<Object> opListener : opListeners) {
                     try {
