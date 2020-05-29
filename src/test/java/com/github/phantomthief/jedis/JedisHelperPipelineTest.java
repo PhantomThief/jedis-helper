@@ -37,7 +37,6 @@ class JedisHelperPipelineTest {
 
     @Test
     void testPipeline() {
-        boolean[] pipelineAfterSync = {false, false};
         try (JedisPool jedisPool = new JedisPool(server.getHost(), server.getBindPort())) {
             JedisHelper<Jedis> helper = JedisHelper.newBuilder(() -> jedisPool)
                     .build();
