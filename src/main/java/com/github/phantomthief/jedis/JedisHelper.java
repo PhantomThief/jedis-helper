@@ -42,6 +42,7 @@ import org.slf4j.LoggerFactory;
 import com.github.phantomthief.jedis.OpInterceptor.JedisOpCall;
 import com.github.phantomthief.jedis.exception.NoAvailablePoolException;
 import com.github.phantomthief.jedis.exception.RethrowException;
+import com.github.phantomthief.jedis.exception.UnexpectedJedisConnectionException;
 import com.github.phantomthief.tuple.TwoTuple;
 import com.github.phantomthief.util.CursorIteratorEx;
 import com.github.phantomthief.util.TriFunction;
@@ -64,6 +65,7 @@ import redis.clients.jedis.ShardedJedis;
 import redis.clients.jedis.ShardedJedisPipeline;
 import redis.clients.jedis.ShardedJedisPool;
 import redis.clients.jedis.Tuple;
+import redis.clients.jedis.exceptions.JedisConnectionException;
 import redis.clients.util.Pool;
 
 /**
@@ -252,13 +254,17 @@ public class JedisHelper<J extends Closeable> {
                     }
                     fireBeforeSync(pool, pipeline, started, t);
                     syncPipeline(pipeline);
-                    thisMap.forEach((key, value) -> {
-                        V rawValue = value.get();
-                        if (rawValue != null || includeNullValue) {
-                            T apply = decoder.apply(rawValue);
-                            result.put(key, apply);
-                        }
-                    });
+                    try {
+                        thisMap.forEach((key, value) -> {
+                            V rawValue = value.get();
+                            if (rawValue != null || includeNullValue) {
+                                T apply = decoder.apply(rawValue);
+                                result.put(key, apply);
+                            }
+                        });
+                    } catch (JedisConnectionException e) {
+                        throw new UnexpectedJedisConnectionException(e);
+                    }
                 } catch (Throwable e) {
                     t = e;
                 } finally {
