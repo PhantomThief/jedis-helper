@@ -17,6 +17,8 @@
 
         <junit.version>5.6.1</junit.version>
         <jsr305.version>3.0.2</jsr305.version>
+        <jedis-mock.version>0.1.16</jedis-mock.version>
+        <logback-classic.version>1.2.3</logback-classic.version>
 
         <maven-javadoc-plugin.version>3.2.0</maven-javadoc-plugin.version>
         <nexus-staging-maven-plugin.version>1.6.8</nexus-staging-maven-plugin.version>
@@ -120,6 +122,18 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.github.fppt</groupId>
+            <artifactId>jedis-mock</artifactId>
+            <version>${jedis-mock.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>${logback-classic.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

@@ -204,7 +204,8 @@ public class JedisHelper<J extends Closeable> {
 
     @SuppressWarnings({ "unchecked" })
     private <P1> Map<PipelineOpListener<P1, Object>, Object> fireOnPipelineStarted(Object pool) {
-        Map<PipelineOpListener<P1, Object>, Object> map = new HashMap<>();
+        RuntimeException toThrow = null;
+        Map<PipelineOpListener<P1, Object>, Object> map = new LinkedHashMap<>();
         // never use collect, coz value may be null.
         for (PipelineOpListener<Object, Object> pipelineOpListener : pipelineOpListeners) {
             Object value = null;
@@ -212,11 +213,16 @@ public class JedisHelper<J extends Closeable> {
                 value = pipelineOpListener.onPipelineStarted(pool);
                 map.put((PipelineOpListener) pipelineOpListener, value);
             } catch (RethrowException e) {
-                throw e.getThrowable();
+                if (toThrow == null) {
+                    toThrow = e.getThrowable();
+                }
             } catch (Throwable e) {
                 logger.error("", e);
                 map.put((PipelineOpListener) pipelineOpListener, value);
             }
+        }
+        if (toThrow != null) {
+            throw toThrow;
         }
         return map;
     }
@@ -286,17 +292,24 @@ public class JedisHelper<J extends Closeable> {
         });
     }
 
-    private void fireAfterSync(Object pool, Map<PipelineOpListener<Object, Object>, Object> s,
-            Throwable t) {
-        s.forEach((p, v) -> {
+    private void fireAfterSync(Object pool, Map<PipelineOpListener<Object, Object>, Object> s, Throwable t) {
+        RuntimeException toThrow = null;
+        for (Entry<PipelineOpListener<Object, Object>, Object> entry : s.entrySet()) {
+            PipelineOpListener<Object, Object> p = entry.getKey();
+            Object v = entry.getValue();
             try {
                 p.afterSync(pool, v, t);
             } catch (RethrowException e) {
-                throw e.getThrowable();
+                if (toThrow == null) {
+                    toThrow = e.getThrowable();
+                }
             } catch (Throwable e) {
                 logger.error("", e);
             }
-        });
+        }
+        if (toThrow != null) {
+            throw toThrow;
+        }
     }
 
     public BasicCommands getBasic() {
