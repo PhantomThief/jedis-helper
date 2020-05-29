@@ -12,8 +12,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.github.fppt.jedismock.RedisServer;
 import com.github.phantomthief.jedis.OpInterceptor.JedisOpCall;
@@ -27,7 +25,6 @@ import redis.clients.jedis.JedisPool;
  */
 class JedisHelperBasicTest {
 
-    private static final Logger logger = LoggerFactory.getLogger(JedisHelperBasicTest.class);
     private static RedisServer server = null;
 
     @BeforeAll
