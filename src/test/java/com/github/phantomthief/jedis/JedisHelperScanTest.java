@@ -1,5 +1,6 @@
 package com.github.phantomthief.jedis;
 
+import static java.util.stream.Collectors.toSet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -8,11 +9,9 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Stream;
 
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.github.fppt.jedismock.RedisServer;
 
@@ -26,17 +25,16 @@ import redis.clients.jedis.ScanParams;
  */
 class JedisHelperScanTest {
 
-    private static final Logger logger = LoggerFactory.getLogger(JedisHelperTest.class);
     private static RedisServer server = null;
 
-    @BeforeAll
-    static void beforeAll() throws IOException {
+    @BeforeEach
+    void setUp() throws IOException {
         server = RedisServer.newRedisServer();  // bind to a random port
         server.start();
     }
 
-    @AfterAll
-    static void afterAll() {
+    @AfterEach
+    void tearDown() {
         server.stop();
     }
 
@@ -59,6 +57,24 @@ class JedisHelperScanTest {
             assertEquals(100, set.size());
             for (int i = 0; i < 100; i++) {
                 assertTrue(set.contains(i));
+            }
+        }
+    }
+
+    @Test
+    void testSscan() {
+        try (JedisPool jedisPool = new JedisPool(server.getHost(), server.getBindPort())) {
+            JedisHelper<Jedis> helper = JedisHelper.newBuilder(() -> jedisPool)
+                    .build();
+            String sscanKey = "sscan_key";
+            for (int i = 0; i < 100; i++) {
+                helper.get().sadd(sscanKey, i + "");
+            }
+            Stream<String> scan = helper.sscan(sscanKey, new ScanParams());
+            Set<String> set = scan.collect(toSet());
+            assertEquals(100, set.size());
+            for (int i = 0; i < 100; i++) {
+                assertTrue(set.contains(i + ""));
             }
         }
     }
