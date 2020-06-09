@@ -3,6 +3,8 @@ package com.github.phantomthief.jedis;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Stream.of;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -15,6 +17,7 @@ import org.junit.jupiter.api.Test;
 
 import com.github.fppt.jedismock.RedisServer;
 import com.github.phantomthief.jedis.OpInterceptor.JedisOpCall;
+import com.github.phantomthief.jedis.exception.NoAvailablePoolException;
 
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
@@ -84,5 +87,15 @@ class JedisHelperBasicTest {
             assertEquals("test1", helper.get().get("test"));
             assertEquals(2, counter.get());
         }
+    }
+
+    @Test
+    void testNoAvailableNode() {
+        Throwable[] e = {null};
+        JedisHelper<Jedis> helper = JedisHelper.newBuilder(() -> null)
+                .addOpListener((pool, requestTime, requestNanoTime, method, args, costInNano, t) -> e[0] = t)
+                .build();
+        assertThrows(NoAvailablePoolException.class, () -> helper.get().get("1"));
+        assertSame(NoAvailablePoolException.class, e[0].getClass());
     }
 }
