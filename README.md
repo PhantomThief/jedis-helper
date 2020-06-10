@@ -1,6 +1,7 @@
 jedis-helper
 =======================
 [![Build Status](https://travis-ci.org/PhantomThief/jedis-helper.svg)](https://travis-ci.org/PhantomThief/jedis-helper)
+[![Coverage Status](https://coveralls.io/repos/github/PhantomThief/jedis-helper/badge.svg?branch=master)](https://coveralls.io/github/PhantomThief/jedis-helper?branch=master)
 [![Total alerts](https://img.shields.io/lgtm/alerts/g/PhantomThief/jedis-helper.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/PhantomThief/jedis-helper/alerts/)
 [![Language grade: Java](https://img.shields.io/lgtm/grade/java/g/PhantomThief/jedis-helper.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/PhantomThief/jedis-helper/context:java)
 [![Maven Central](https://img.shields.io/maven-central/v/com.github.phantomthief/jedis-helper)](https://search.maven.org/artifact/com.github.phantomthief/jedis-helper/)
