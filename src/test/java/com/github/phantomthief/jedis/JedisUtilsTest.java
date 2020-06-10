@@ -70,11 +70,17 @@ class JedisUtilsTest {
             for (int i = 0; i < 10; i++) {
                 map.put(i + "", (double) i);
             }
-            assertFalse(syncSortedSetKey(helper.get(), "testzset", it -> it, it -> map));
-            helper.get().zadd("testzset", 1, "a");
-            assertTrue(syncSortedSetKey(helper.get(), "testzset", it -> it, it -> map));
-            assertFalse(syncSortedSetKey(helper.get(), "testzset", it -> it, it -> map));
-            Set<String> test = helper.get().zrevrange("testzset", 0, 100);
+            String key = "testzset";
+            assertFalse(syncSortedSetKey(helper.get(), key, it -> it, it -> map));
+            helper.get().zadd(key, 1, "a");
+            assertTrue(syncSortedSetKey(helper.get(), key, it -> it, it -> map));
+            assertFalse(syncSortedSetKey(helper.get(), key, it -> it, it -> map));
+            Set<String> test = helper.get().zrevrange(key, 0, 100);
+            assertEquals(10, test.size());
+            helper.get().zadd(key, 2, "1");
+            assertTrue(syncSortedSetKey(helper.get(), key, it -> it, it -> map));
+            assertFalse(syncSortedSetKey(helper.get(), key, it -> it, it -> map));
+            test = helper.get().zrevrange(key, 0, 100);
             assertEquals(10, test.size());
         }
     }

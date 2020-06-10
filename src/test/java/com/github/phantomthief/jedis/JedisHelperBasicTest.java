@@ -17,6 +17,8 @@ import com.github.phantomthief.jedis.exception.NoAvailablePoolException;
 
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.ShardedJedis;
+import redis.clients.jedis.ShardedJedisPool;
 
 /**
  * @author w.vela
@@ -29,6 +31,22 @@ class JedisHelperBasicTest extends BaseJedisTest{
         try (JedisPool jedisPool = getPool()) {
             Deque<String> ops = new ArrayDeque<>();
             JedisHelper<Jedis> helper = JedisHelper.newBuilder(() -> jedisPool)
+                    .addOpListener((pool, requestTime, requestNanoTime, method, args, costInNano, t) -> {
+                        ops.add(method.getName() + ":" + of(args).map(Object::toString).collect(joining(":")));
+                    })
+                    .build();
+            helper.get().set("test", "test1");
+            assertEquals("set:test:test1", ops.poll());
+            assertEquals("test1", helper.get().get("test"));
+            assertEquals("get:test", ops.poll());
+        }
+    }
+
+    @Test
+    void testShardedOpListener() {
+        try (ShardedJedisPool jedisPool = getShardedPool()) {
+            Deque<String> ops = new ArrayDeque<>();
+            JedisHelper<ShardedJedis> helper = JedisHelper.newShardedBuilder(() -> jedisPool)
                     .addOpListener((pool, requestTime, requestNanoTime, method, args, costInNano, t) -> {
                         ops.add(method.getName() + ":" + of(args).map(Object::toString).collect(joining(":")));
                     })
