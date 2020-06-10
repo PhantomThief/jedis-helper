@@ -4,18 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.io.IOException;
 import java.lang.reflect.Method;
 
 import javax.annotation.Nullable;
 
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.github.fppt.jedismock.RedisServer;
 import com.github.phantomthief.jedis.exception.RethrowException;
 
 import redis.clients.jedis.Jedis;
@@ -26,26 +22,13 @@ import redis.clients.jedis.PipelineBase;
  * @author w.vela
  * Created on 2020-05-29.
  */
-class JedisHelperTest {
+class JedisHelperTest extends BaseJedisTest {
 
     private static final Logger logger = LoggerFactory.getLogger(JedisHelperTest.class);
-    private static RedisServer server = null;
-
-    @BeforeAll
-    static void beforeAll() throws IOException {
-        server = RedisServer.newRedisServer();  // bind to a random port
-        server.start();
-    }
-
-    @AfterAll
-    static void afterAll() {
-        server.stop();
-    }
-
     @Test
     void testAfterSyncRethrow() {
         boolean[] pipelineAfterSync = {false, false};
-        try (JedisPool jedisPool = new JedisPool(server.getHost(), server.getBindPort())) {
+        try (JedisPool jedisPool = getPool()) {
             JedisHelper<Jedis> helper = JedisHelper.newBuilder(() -> jedisPool)
                     .addPipelineOpListener(new PipelineOpListener<JedisPool, Object>() {
                         @Override
@@ -92,7 +75,7 @@ class JedisHelperTest {
     @Test
     void testOnStartedRethrow() {
         boolean[] onStarted = {false, false};
-        try (JedisPool jedisPool = new JedisPool(server.getHost(), server.getBindPort())) {
+        try (JedisPool jedisPool = getPool()) {
             JedisHelper<Jedis> helper = JedisHelper.newBuilder(() -> jedisPool)
                     .addPipelineOpListener(new PipelineOpListener<JedisPool, Object>() {
                         @Override

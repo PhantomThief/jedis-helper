@@ -6,16 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import com.github.fppt.jedismock.RedisServer;
 import com.github.phantomthief.jedis.OpInterceptor.JedisOpCall;
 import com.github.phantomthief.jedis.exception.NoAvailablePoolException;
 
@@ -26,24 +22,11 @@ import redis.clients.jedis.JedisPool;
  * @author w.vela
  * Created on 2020-05-29.
  */
-class JedisHelperBasicTest {
-
-    private static RedisServer server = null;
-
-    @BeforeAll
-    static void beforeAll() throws IOException {
-        server = RedisServer.newRedisServer();  // bind to a random port
-        server.start();
-    }
-
-    @AfterAll
-    static void afterAll() {
-        server.stop();
-    }
+class JedisHelperBasicTest extends BaseJedisTest{
 
     @Test
     void testOpListener() {
-        try (JedisPool jedisPool = new JedisPool(server.getHost(), server.getBindPort())) {
+        try (JedisPool jedisPool = getPool()) {
             Deque<String> ops = new ArrayDeque<>();
             JedisHelper<Jedis> helper = JedisHelper.newBuilder(() -> jedisPool)
                     .addOpListener((pool, requestTime, requestNanoTime, method, args, costInNano, t) -> {
@@ -59,7 +42,7 @@ class JedisHelperBasicTest {
 
     @Test
     void testOpInterceptor() {
-        try (JedisPool jedisPool = new JedisPool(server.getHost(), server.getBindPort())) {
+        try (JedisPool jedisPool = getPool()) {
             Deque<String> ops = new ArrayDeque<>();
             JedisHelper<Jedis> helper = JedisHelper.newBuilder(() -> jedisPool)
                     .addOpInterceptor((pool, method, jedis, args) -> {
@@ -76,7 +59,7 @@ class JedisHelperBasicTest {
 
     @Test
     void testPoolListener() {
-        try (JedisPool jedisPool = new JedisPool(server.getHost(), server.getBindPort())) {
+        try (JedisPool jedisPool = getPool()) {
             AtomicInteger counter = new AtomicInteger();
             JedisHelper<Jedis> helper = JedisHelper.newBuilder(() -> jedisPool)
                     .addPoolListener((pool, borrowTime, borrowNanoTime, t) -> counter.incrementAndGet())
