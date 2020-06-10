@@ -1,11 +1,13 @@
 package com.github.phantomthief.jedis;
 
+import static com.github.phantomthief.jedis.JedisUtils.*;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.BitSet;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -22,7 +24,6 @@ import redis.clients.jedis.JedisPool;
  * @author w.vela
  * Created on 2020-06-09.
  */
-@Disabled
 class JedisUtilsTest {
 
     private static RedisServer server = null;
@@ -38,6 +39,7 @@ class JedisUtilsTest {
         server.stop();
     }
 
+    @Disabled
     @Test
     void test() {
         // 这个测试用例只有真实redis-server能通过
@@ -46,14 +48,42 @@ class JedisUtilsTest {
                     .build();
             helper.get().setbit("test", 100, true);
             byte[] bytes = helper.getBinary().get("test".getBytes());
-            System.out.println(Arrays.toString(bytes));
-            BitSet bitSet = JedisUtils.toBitSet(bytes);
+            BitSet bitSet = toBitSet(bytes);
             assertFalse(bitSet.get(0));
             assertTrue(bitSet.get(100));
 
-            IntSet intSet = JedisUtils.toIntSet(bytes);
+            IntSet intSet = toIntSet(bytes);
             assertFalse(intSet.contains(0));
             assertTrue(intSet.contains(100));
+        }
+    }
+
+    @Test
+    void testTemp() {
+        // 这个测试用例只有真实redis-server能通过
+        try (JedisPool jedisPool = new JedisPool(server.getHost(), server.getBindPort())) {
+            JedisHelper<Jedis> helper = JedisHelper.newBuilder(() -> jedisPool)
+                    .build();
+            helper.get().setbit("test", 100, true);
+            byte[] bytes = helper.getBinary().get("test".getBytes());
+            toBitSet(bytes);
+            toIntSet(bytes);
+        }
+    }
+
+    @Disabled
+    @Test
+    void testSync() {
+        try (JedisPool jedisPool = new JedisPool(server.getHost(), server.getBindPort())) {
+            JedisHelper<Jedis> helper = JedisHelper.newBuilder(() -> jedisPool)
+                    .build();
+            Map<String, Double> map = new HashMap<>();
+            for (int i = 0; i < 10; i++) {
+                map.put(i + "", (double) i);
+            }
+            assertFalse(syncSortedSetKey(helper.get(), "test", it -> it, it -> map));
+            helper.get().zadd("test", 1, "a");
+            assertTrue(syncSortedSetKey(helper.get(), "test", it -> it, it -> map));
         }
     }
 }
