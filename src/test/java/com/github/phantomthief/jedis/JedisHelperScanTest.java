@@ -55,7 +55,7 @@ class JedisHelperScanTest extends BaseJedisTest{
             for (int i = 0; i < 100; i++) {
                 helper.get().sadd(sscanKey, i + "");
             }
-            Stream<String> scan = helper.sscan(sscanKey, new ScanParams());
+            Stream<String> scan = helper.sscan(sscanKey);
             Set<String> set = scan.collect(toSet());
             assertEquals(100, set.size());
             for (int i = 0; i < 100; i++) {
@@ -73,7 +73,7 @@ class JedisHelperScanTest extends BaseJedisTest{
             for (int i = 0; i < 100; i++) {
                 helper.get().hset(hscanKey, i + "", i + "");
             }
-            Stream<Entry<String, String>> scan = helper.hscan(hscanKey, new ScanParams());
+            Stream<Entry<String, String>> scan = helper.hscan(hscanKey);
             Set<Entry<String, String>> set = scan.collect(toSet());
             assertEquals(100, set.size());
             for (int i = 0; i < 100; i++) {
@@ -91,7 +91,7 @@ class JedisHelperScanTest extends BaseJedisTest{
             for (int i = 0; i < 100; i++) {
                 helper.get().zadd(zscanKey, i, i + "");
             }
-            Stream<Tuple> scan = helper.zscan(zscanKey, new ScanParams());
+            Stream<Tuple> scan = helper.zscan(zscanKey);
             Set<Tuple> set = scan.collect(toSet());
             assertEquals(100, set.size());
             for (int i = 0; i < 100; i++) {
