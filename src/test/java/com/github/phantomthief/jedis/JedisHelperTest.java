@@ -69,6 +69,12 @@ class JedisHelperTest extends BaseJedisTest {
             assertEquals("test1", e.getMessage());
             assertTrue(pipelineAfterSync[0]);
             assertTrue(pipelineAfterSync[1]);
+
+            assertThrows(RuntimeException.class, () -> {
+                helper.binaryPipeline(p -> {
+                    p.hget("test".getBytes(), "test".getBytes());
+                });
+            });
         }
     }
 
