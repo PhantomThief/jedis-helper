@@ -45,6 +45,7 @@ class JedisHelperPipelineTest extends BaseJedisTest{
     void testPipelineListener() {
         try (JedisPool jedisPool = getPool()) {
             JedisHelper<Jedis> helper = JedisHelper.newBuilder(() -> jedisPool)
+                    .withPipelinePartitionSize(2)
                     .addPipelineOpListener(new PipelineOpListener<JedisPool, Object>() {
                         @Override
                         public void onRequest(JedisPool pool, PipelineBase pipeline, @Nullable Object obj,

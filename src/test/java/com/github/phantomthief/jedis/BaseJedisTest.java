@@ -28,7 +28,9 @@ abstract class BaseJedisTest {
     void setUp() {
         server = new RedisServer(PORT);
         server.start();
-        jedisPool = new JedisPool("localhost", PORT);
+        GenericObjectPoolConfig config = new GenericObjectPoolConfig();
+        config.setMaxTotal(1);
+        jedisPool = new JedisPool(config, "localhost", PORT);
         shardedJedisPool = new ShardedJedisPool(new GenericObjectPoolConfig(), singletonList(new JedisShardInfo("localhost", PORT)));
     }
 

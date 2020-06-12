@@ -5,9 +5,11 @@ import static java.util.stream.Stream.of;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
@@ -19,6 +21,7 @@ import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.ShardedJedis;
 import redis.clients.jedis.ShardedJedisPool;
+import redis.clients.jedis.exceptions.JedisConnectionException;
 
 /**
  * @author w.vela
@@ -39,6 +42,8 @@ class JedisHelperBasicTest extends BaseJedisTest{
             assertEquals("set:test:test1", ops.poll());
             assertEquals("test1", helper.get().get("test"));
             assertEquals("get:test", ops.poll());
+
+            assertTrue(helper.getBasic().info().contains("redis_version"));
         }
     }
 
@@ -98,5 +103,26 @@ class JedisHelperBasicTest extends BaseJedisTest{
                 .build();
         assertThrows(NoAvailablePoolException.class, () -> helper.get().get("1"));
         assertSame(NoAvailablePoolException.class, e[0].getClass());
+    }
+
+    @Test
+    void testPoolFailed() throws InterruptedException {
+        CountDownLatch latch1 = new CountDownLatch(1);
+        Thread thread = new Thread(() -> {
+            try (JedisPool jedisPool = getPool()) {
+                latch1.countDown();
+                jedisPool.getResource(); // borrow
+            }
+        });
+        thread.start();
+        latch1.await();
+        Throwable[] e = {null};
+        try (JedisPool jedisPool = getPool()) {
+            JedisHelper<Jedis> helper = JedisHelper.newBuilder(() -> jedisPool)
+                    .addPoolListener((pool, borrowTime, borrowNanoTime, t) -> e[0] = t)
+                    .build();
+            assertThrows(JedisConnectionException.class, () -> helper.get().get("test"));
+            assertSame(JedisConnectionException.class, e[0].getClass());
+        }
     }
 }
