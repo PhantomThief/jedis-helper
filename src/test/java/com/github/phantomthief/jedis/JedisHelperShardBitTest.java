@@ -1,5 +1,6 @@
 package com.github.phantomthief.jedis;
 
+import static java.util.stream.Collectors.toSet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -7,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 
@@ -65,6 +68,23 @@ class JedisHelperShardBitTest extends BaseJedisTest{
             assertEquals(booleanCount, helper.getShardBitCount("test", keyHashRange, 0, 10));
             Map<Long, String> test1 = JedisHelper.getShardBitKeys(keys, "test", keyHashRange);
             assertEquals(keys.stream().distinct().count(), test1.size());
+
+            Stream<Long> stream = helper.iterateShardBit("test", keyHashRange, 0, 10);
+            Set<Long> collect = stream.collect(toSet());
+            for (long i = 0; i < 10; i++) {
+                if (i % 3 == 0) {
+                    assertTrue(collect.contains(i));
+                } else {
+                    assertFalse(collect.contains(i));
+                }
+            }
+            helper.delShardBit("test", keyHashRange, 0, 10);
+
+            stream = helper.iterateShardBit("test", keyHashRange, 0, 10);
+            collect = stream.collect(toSet());
+            for (long i = 0; i < 10; i++) {
+                assertFalse(collect.contains(i));
+            }
         }
     }
 }
