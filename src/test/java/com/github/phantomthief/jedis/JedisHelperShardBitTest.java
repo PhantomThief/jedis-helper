@@ -36,9 +36,15 @@ class JedisHelperShardBitTest extends BaseJedisTest{
             });
 
             int keyHashRange = 5;
+            boolean ib = false;
             for (long i = 0; i < 10; i++) {
                 if (i % 3 == 0) {
-                    assertFalse(helper.setShardBit(i, "test", keyHashRange, true));
+                    if (ib) {
+                        assertFalse(helper.setShardBit(i, "test", keyHashRange, true));
+                    } else {
+                        assertFalse(helper.setShardBit(i, "test", keyHashRange));
+                    }
+                    ib = !ib;
                     assertTrue(helper.getShardBit(i, "test", keyHashRange));
                 } else {
                     assertFalse(helper.getShardBit(i, "test", keyHashRange));
