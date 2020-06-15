@@ -110,8 +110,8 @@ class JedisHelperBasicTest extends BaseJedisTest{
         CountDownLatch latch1 = new CountDownLatch(1);
         Thread thread = new Thread(() -> {
             try (JedisPool jedisPool = getPool()) {
-                latch1.countDown();
                 jedisPool.getResource(); // borrow
+                latch1.countDown();
             }
         });
         thread.start();
