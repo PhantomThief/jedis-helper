@@ -2,6 +2,7 @@ package com.github.phantomthief.jedis;
 
 import static java.util.stream.Collectors.toSet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.AbstractMap.SimpleEntry;
@@ -11,6 +12,7 @@ import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 
+import redis.clients.jedis.ScanParams;
 import redis.clients.jedis.ShardedJedis;
 import redis.clients.jedis.ShardedJedisPool;
 import redis.clients.jedis.Tuple;
@@ -20,6 +22,15 @@ import redis.clients.jedis.Tuple;
  * Created on 2020-05-29.
  */
 class JedisHelperShardedScanTest extends BaseJedisTest{
+
+    @Test
+    void test() {
+        try (ShardedJedisPool jedisPool = getShardedPool()) {
+            JedisHelper<ShardedJedis> helper = JedisHelper.newShardedBuilder(() -> jedisPool)
+                    .build();
+            assertThrows(UnsupportedOperationException.class, () -> helper.scan(new ScanParams()));
+        }
+    }
 
     @Test
     void testSscan() {

@@ -37,7 +37,6 @@ public final class JedisUtils {
     private static final Logger logger = getLogger(JedisUtils.class);
 
     private JedisUtils() {
-        throw new UnsupportedOperationException();
     }
 
     public static IntSet toIntSet(final byte[] bytes) {
