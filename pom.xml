@@ -15,7 +15,7 @@
         <cursor-iterator.version>1.0.8</cursor-iterator.version>
         <more-lambdas.version>0.1.8</more-lambdas.version>
 
-        <junit.version>5.6.1</junit.version>
+        <junit.version>5.6.2</junit.version>
         <jsr305.version>3.0.2</jsr305.version>
         <embedded-redis.version>0.7.2</embedded-redis.version>
         <logback-classic.version>1.2.3</logback-classic.version>
